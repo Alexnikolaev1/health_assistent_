@@ -1,0 +1,207 @@
+/**
+ * Многошаговые сценарии (состояния хранятся в conversation_contexts).
+ */
+
+import {
+  sendMessage,
+  sendMessageWithKeyboard,
+  buildKeyboard,
+  MAIN_MENU_KEYBOARD,
+} from '@/lib/max/client';
+import {
+  saveMetric,
+  createReminder,
+  clearConversationContext,
+  setConversationContext,
+} from '@/lib/db';
+import { getAppointmentSlotsMock, formatAppointmentSlots, createSickLeaveMock } from '@/lib/gosuslugi/mock';
+import { scheduleDailyReminder } from '@/lib/reminders/scheduler';
+import {
+  parseMetricFromText,
+  getMetricDisplayName,
+  formatMetricValue,
+} from '@/utils/parsers';
+import { handleSymptomAnalysis, dispatchPlainMessage } from './dispatch';
+import type { MetricType } from '@/types';
+
+export async function handleDialogContext(
+  chatId: number,
+  dbUserId: number,
+  maxUserId: number,
+  text: string,
+  context: Record<string, unknown>,
+  firstName?: string
+): Promise<void> {
+  const state = context.state as string;
+
+  switch (state) {
+    case 'waiting_symptom': {
+      const t = text.trim();
+      await clearConversationContext(dbUserId, 'dialog');
+      if (t.length < 10) {
+        await sendMessage(
+          chatId,
+          `Опишите симптомы чуть подробнее (не меньше ~10 символов) или используйте /help.`
+        );
+        return;
+      }
+      await handleSymptomAnalysis(chatId, dbUserId, t);
+      return;
+    }
+
+    case 'waiting_metric_value': {
+      const metricType = context.metric_type as MetricType;
+      const metric = parseMetricFromText(`${metricType} ${text}`) ?? parseMetricFromText(text);
+      if (!metric) {
+        await sendMessage(
+          chatId,
+          `⚠️ Не удалось распознать значение. Введите, например: *120/80* или *75*`,
+          { parse_mode: 'Markdown' }
+        );
+        return;
+      }
+      await saveMetric(dbUserId, metricType, text.trim());
+      await clearConversationContext(dbUserId, 'dialog');
+      await sendMessage(
+        chatId,
+        `✅ ${getMetricDisplayName(metricType)}: *${formatMetricValue(metricType, text.trim())}* сохранено!`,
+        { parse_mode: 'Markdown' }
+      );
+      return;
+    }
+
+    case 'waiting_reminder_name': {
+      await setConversationContext(dbUserId, 'dialog', { state: 'waiting_reminder_time', name: text.trim() }, 10);
+      await sendMessage(
+        chatId,
+        `⏰ В какое время напомнить? Введите время в формате *ЧЧ:ММ* (например, 20:00):`,
+        { parse_mode: 'Markdown' }
+      );
+      return;
+    }
+
+    case 'waiting_reminder_time': {
+      const timeMatch = text.match(/^(\d{1,2}):(\d{2})$/);
+      if (!timeMatch) {
+        await sendMessage(
+          chatId,
+          `⚠️ Неверный формат. Введите время как *ЧЧ:ММ*, например: 20:00`,
+          { parse_mode: 'Markdown' }
+        );
+        return;
+      }
+      const hours = timeMatch[1].padStart(2, '0');
+      const minutes = timeMatch[2];
+      const time = `${hours}:${minutes}`;
+      const reminderName = context.name as string;
+
+      const reminder = await createReminder(dbUserId, reminderName, time);
+      await clearConversationContext(dbUserId, 'dialog');
+
+      await scheduleDailyReminder(reminder.id, dbUserId, maxUserId, reminderName, time);
+
+      await sendMessage(
+        chatId,
+        `✅ Напоминание добавлено!\n\n💊 *${reminderName}*\n⏰ Каждый день в *${time}*`,
+        { parse_mode: 'Markdown' }
+      );
+      return;
+    }
+
+    case 'waiting_habit_name': {
+      await setConversationContext(dbUserId, 'dialog', { state: 'waiting_habit_frequency', name: text.trim() }, 10);
+      await sendMessageWithKeyboard(
+        chatId,
+        `💪 Привычка: *${text.trim()}*\n\nКак часто вы хотите это делать?`,
+        buildKeyboard([
+          [
+            { text: 'Каждые 2 часа', callback_data: 'habit_freq:interval:2' },
+            { text: 'Каждые 4 часа', callback_data: 'habit_freq:interval:4' },
+          ],
+          [
+            { text: 'Ежедневно утром (09:00)', callback_data: 'habit_freq:daily:09:00' },
+            { text: 'Ежедневно вечером (21:00)', callback_data: 'habit_freq:daily:21:00' },
+          ],
+          [{ text: '❌ Отмена', callback_data: 'cancel' }],
+        ])
+      );
+      return;
+    }
+
+    case 'waiting_appointment_city': {
+      const specialty = context.specialty as string;
+      const city = text.trim();
+      await clearConversationContext(dbUserId, 'dialog');
+
+      await sendMessage(chatId, `🔍 Ищу слоты для *${specialty}* в ${city}...`, { parse_mode: 'Markdown' });
+
+      const slots = await getAppointmentSlotsMock({ user_id: dbUserId, specialty, city });
+      const { message, keyboard } = formatAppointmentSlots(slots);
+
+      await sendMessageWithKeyboard(chatId, message, { inline_keyboard: keyboard });
+      return;
+    }
+
+    case 'waiting_appointment_specialty': {
+      const specialty = text.trim();
+      if (!specialty) {
+        await sendMessage(chatId, `Введите название специальности одним сообщением.`);
+        return;
+      }
+      await setConversationContext(dbUserId, 'dialog', { state: 'waiting_appointment_city', specialty }, 10);
+      await sendMessage(chatId, `📍 В каком городе ищем запись к *${specialty}*?`, { parse_mode: 'Markdown' });
+      return;
+    }
+
+    case 'waiting_sickleave_period': {
+      const periodMatch = text.match(/(\d{2}\.\d{2}\.\d{4})\s*[-–]\s*(\d{2}\.\d{2}\.\d{4})/);
+      if (!periodMatch) {
+        await sendMessage(
+          chatId,
+          `⚠️ Введите период в формате: *01.01.2024 - 07.01.2024*`,
+          { parse_mode: 'Markdown' }
+        );
+        return;
+      }
+      await setConversationContext(
+        dbUserId,
+        'dialog',
+        {
+          state: 'waiting_sickleave_reason',
+          start_date: periodMatch[1],
+          end_date: periodMatch[2],
+        },
+        10
+      );
+      await sendMessage(chatId, `📋 Укажите причину (например: *ОРВИ*, *Травма*, *Хирургия*):`, {
+        parse_mode: 'Markdown',
+      });
+      return;
+    }
+
+    case 'waiting_sickleave_reason': {
+      const result = await createSickLeaveMock({
+        user_id: dbUserId,
+        start_date: context.start_date as string,
+        end_date: context.end_date as string,
+        reason: text.trim(),
+      });
+      await clearConversationContext(dbUserId, 'dialog');
+
+      await sendMessage(
+        chatId,
+        `📋 *Заявление на больничный сформировано*\n\n` +
+          `🆔 ID: \`${result.application_id}\`\n` +
+          `📅 Период: ${context.start_date} — ${context.end_date}\n` +
+          `📝 Причина: ${text.trim()}\n\n` +
+          `${result.instructions}`,
+        { parse_mode: 'Markdown' }
+      );
+      return;
+    }
+
+    default:
+      await clearConversationContext(dbUserId, 'dialog');
+      await dispatchPlainMessage(chatId, dbUserId, maxUserId, text, firstName);
+  }
+}
