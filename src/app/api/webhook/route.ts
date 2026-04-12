@@ -22,11 +22,15 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   const update = normalizeIncomingUpdate(raw);
   if (!update) {
-    logger.debug({ raw }, 'Webhook body not mapped to update; skipping');
+    const ut =
+      raw && typeof raw === 'object' && 'update_type' in raw
+        ? String((raw as Record<string, unknown>).update_type)
+        : undefined;
+    logger.warn({ update_type: ut }, 'Webhook body not mapped to update; skipping');
     return NextResponse.json({ ok: true });
   }
 
-  logger.debug({ update_id: update.update_id }, 'Received MAX update');
+  logger.info({ update_id: update.update_id }, 'Received MAX update');
 
   await processBotUpdate(update);
 

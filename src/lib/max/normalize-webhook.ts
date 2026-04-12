@@ -71,6 +71,37 @@ export function normalizeIncomingUpdate(body: unknown): MAXUpdate | null {
     };
   }
 
+  /** Старт диалога с ботом (кнопка «Начать») — приходит как отдельное событие, не как текст /start */
+  if (updateType === 'bot_started') {
+    const userRec = (u.user as UnknownRec) || {};
+    const userId = num(userRec.user_id ?? userRec.id, 0);
+    const chatId = num(u.chat_id ?? userId, userId);
+    const ts = num(u.timestamp, Date.now());
+    const payload = u.payload != null && str(u.payload).length > 0 ? str(u.payload) : '';
+    const startText = payload ? `/start ${payload}` : '/start';
+
+    const from: MAXUser = {
+      id: userId,
+      first_name: str(userRec.name ?? userRec.first_name ?? 'Пользователь'),
+      username: userRec.username ? str(userRec.username) : undefined,
+    };
+
+    const chat: MAXChat = { id: chatId, type: 'private' };
+
+    const message: MAXMessage = {
+      message_id: num(ts % 1_000_000_000, 1),
+      from,
+      chat,
+      date: Math.floor(ts / 1000) || Math.floor(Date.now() / 1000),
+      text: startText,
+    };
+
+    return {
+      update_id: ts,
+      message,
+    };
+  }
+
   if (updateType === 'message_callback' && u.callback && typeof u.callback === 'object') {
     const cb = u.callback as UnknownRec;
     const callbackId = str(cb.callback_id ?? cb.id ?? '');
