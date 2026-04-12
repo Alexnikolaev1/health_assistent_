@@ -133,7 +133,7 @@ CREATE TABLE IF NOT EXISTS appointments (
   appointment_date DATE,
   appointment_time VARCHAR(5),
   status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'confirmed', 'cancelled', 'completed')),
-  gosuslugi_id VARCHAR(100),          -- ID записи в Госуслугах
+  gosuslugi_id VARCHAR(100),          -- зарезервировано (не используется ботом)
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 

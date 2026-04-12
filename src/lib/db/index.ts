@@ -343,28 +343,6 @@ export async function getSymptomHistory(userId: number, limit: number = 5): Prom
 }
 
 // ==========================================
-// Записи к врачу
-// ==========================================
-
-export async function createAppointment(
-  userId: number,
-  specialty: string,
-  doctorName?: string,
-  clinic?: string,
-  date?: string,
-  time?: string
-): Promise<{ id: number }> {
-  return query(async () => {
-    const result = await sql<{ id: number }>`
-      INSERT INTO appointments (user_id, specialty, doctor_name, clinic, appointment_date, appointment_time)
-      VALUES (${userId}, ${specialty}, ${doctorName ?? null}, ${clinic ?? null}, ${date ?? null}, ${time ?? null})
-      RETURNING id
-    `;
-    return result.rows[0];
-  }, 'createAppointment');
-}
-
-// ==========================================
 // Идемпотентность и rate limit вебхука
 // ==========================================
 

@@ -174,37 +174,6 @@ export interface YandexGPTResponse {
 }
 
 // ==========================================
-// Госуслуги Types
-// ==========================================
-
-export interface AppointmentSlot {
-  id: string;
-  date: string;
-  time: string;
-  doctor_name: string;
-  specialty: string;
-  clinic: string;
-  address: string;
-  available: boolean;
-}
-
-export interface AppointmentRequest {
-  user_id: number;
-  specialty: string;
-  city: string;
-  clinic?: string;
-  preferred_date?: string;
-}
-
-export interface SickLeaveRequest {
-  user_id: number;
-  start_date: string;
-  end_date: string;
-  reason: string;
-  diagnosis_code?: string;
-}
-
-// ==========================================
 // QStash Types
 // ==========================================
 
@@ -228,8 +197,7 @@ export type DialogState =
   | 'waiting_metric_value'
   | 'waiting_reminder_name'
   | 'waiting_reminder_time'
-  | 'waiting_appointment_specialty'
-  | 'waiting_appointment_city'
+  | 'waiting_physician_specialty_other'
   | 'waiting_habit_name'
   | 'waiting_habit_frequency';
 

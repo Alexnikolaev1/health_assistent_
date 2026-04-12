@@ -14,13 +14,13 @@ import {
   clearConversationContext,
   setConversationContext,
 } from '@/lib/db';
-import { getAppointmentSlotsMock, formatAppointmentSlots, createSickLeaveMock } from '@/lib/gosuslugi/mock';
 import { scheduleDailyReminder } from '@/lib/reminders/scheduler';
 import {
   parseMetricFromText,
   getMetricDisplayName,
   formatMetricValue,
 } from '@/utils/parsers';
+import { sendPhysicianReminderToChat } from '@/lib/physician-reminder';
 import { handleSymptomAnalysis, dispatchPlainMessage } from './dispatch';
 import type { MetricType } from '@/types';
 
@@ -128,75 +128,14 @@ export async function handleDialogContext(
       return;
     }
 
-    case 'waiting_appointment_city': {
-      const specialty = context.specialty as string;
-      const city = text.trim();
-      await clearConversationContext(dbUserId, 'dialog');
-
-      await sendMessage(chatId, `🔍 Ищу слоты для *${specialty}* в ${city}...`, { parse_mode: 'Markdown' });
-
-      const slots = await getAppointmentSlotsMock({ user_id: dbUserId, specialty, city });
-      const { message, keyboard } = formatAppointmentSlots(slots);
-
-      await sendMessageWithKeyboard(chatId, message, { inline_keyboard: keyboard });
-      return;
-    }
-
-    case 'waiting_appointment_specialty': {
+    case 'waiting_physician_specialty_other': {
       const specialty = text.trim();
       if (!specialty) {
         await sendMessage(chatId, `Введите название специальности одним сообщением.`);
         return;
       }
-      await setConversationContext(dbUserId, 'dialog', { state: 'waiting_appointment_city', specialty }, 10);
-      await sendMessage(chatId, `📍 В каком городе ищем запись к *${specialty}*?`, { parse_mode: 'Markdown' });
-      return;
-    }
-
-    case 'waiting_sickleave_period': {
-      const periodMatch = text.match(/(\d{2}\.\d{2}\.\d{4})\s*[-–]\s*(\d{2}\.\d{2}\.\d{4})/);
-      if (!periodMatch) {
-        await sendMessage(
-          chatId,
-          `⚠️ Введите период в формате: *01.01.2024 - 07.01.2024*`,
-          { parse_mode: 'Markdown' }
-        );
-        return;
-      }
-      await setConversationContext(
-        dbUserId,
-        'dialog',
-        {
-          state: 'waiting_sickleave_reason',
-          start_date: periodMatch[1],
-          end_date: periodMatch[2],
-        },
-        10
-      );
-      await sendMessage(chatId, `📋 Укажите причину (например: *ОРВИ*, *Травма*, *Хирургия*):`, {
-        parse_mode: 'Markdown',
-      });
-      return;
-    }
-
-    case 'waiting_sickleave_reason': {
-      const result = await createSickLeaveMock({
-        user_id: dbUserId,
-        start_date: context.start_date as string,
-        end_date: context.end_date as string,
-        reason: text.trim(),
-      });
       await clearConversationContext(dbUserId, 'dialog');
-
-      await sendMessage(
-        chatId,
-        `📋 *Заявление на больничный сформировано*\n\n` +
-          `🆔 ID: \`${result.application_id}\`\n` +
-          `📅 Период: ${context.start_date} — ${context.end_date}\n` +
-          `📝 Причина: ${text.trim()}\n\n` +
-          `${result.instructions}`,
-        { parse_mode: 'Markdown' }
-      );
+      await sendPhysicianReminderToChat(chatId, dbUserId, specialty);
       return;
     }
 

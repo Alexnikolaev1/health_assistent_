@@ -1,5 +1,5 @@
 /**
- * Inline-кнопки: cmd:*, metric:*, action:*, запись к врачу, привычки, напоминания.
+ * Inline-кнопки: cmd:*, metric:*, action:*, визит к врачу, привычки, напоминания.
  */
 
 import {
@@ -16,9 +16,9 @@ import {
   getUserHabits,
   completeHabit,
   getHabitStats,
-  createAppointment,
   deactivateReminder,
 } from '@/lib/db';
+import { sendPhysicianReminderToChat } from '@/lib/physician-reminder';
 import type { MetricType } from '@/types';
 import { getMetricDisplayName } from '@/utils/parsers';
 import { formatHabitStats, CHALLENGES } from '@/lib/habits/engine';
@@ -115,31 +115,11 @@ export async function handleInlineCallback(
   if (data.startsWith('appt_spec:')) {
     const specialty = data.replace('appt_spec:', '');
     if (specialty === 'other') {
-      await setConversationContext(dbUserId, 'dialog', { state: 'waiting_appointment_specialty' }, 10);
-      await sendMessage(chatId, `Введите нужную специальность:`);
+      await setConversationContext(dbUserId, 'dialog', { state: 'waiting_physician_specialty_other' }, 10);
+      await sendMessage(chatId, `Введите нужную специальность одним сообщением:`);
       return;
     }
-    await setConversationContext(dbUserId, 'dialog', { state: 'waiting_appointment_city', specialty }, 10);
-    await sendMessage(chatId, `📍 В каком городе ищем запись к *${specialty}*?`, { parse_mode: 'Markdown' });
-    return;
-  }
-
-  if (data.startsWith('appt:')) {
-    if (data === 'appt:cancel') {
-      await sendMessageWithKeyboard(chatId, '❌ Запись отменена.', MAIN_MENU_KEYBOARD);
-      return;
-    }
-    const parts = data.split(':');
-    const date = parts[2];
-    const time = parts[3];
-    const doctorName = parts.slice(4).join(':');
-
-    await createAppointment(dbUserId, 'Терапевт', doctorName, undefined, date, time);
-    await sendMessage(
-      chatId,
-      `✅ *Запись подтверждена!*\n\n👨‍⚕️ Врач: ${doctorName}\n📅 Дата: ${date}\n⏰ Время: ${time}\n\n📲 Подтверждение придёт через Госуслуги.`,
-      { parse_mode: 'Markdown' }
-    );
+    await sendPhysicianReminderToChat(chatId, dbUserId, specialty);
     return;
   }
 

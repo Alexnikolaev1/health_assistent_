@@ -171,7 +171,7 @@ export const MAIN_MENU_KEYBOARD: InlineKeyboardMarkup = {
       { text: '💪 Привычки', callback_data: 'cmd:habits' },
     ],
     [
-      { text: '📅 Запись к врачу', callback_data: 'cmd:appointment' },
+      { text: '👨‍⚕️ Визит к врачу', callback_data: 'cmd:appointment' },
       { text: '📋 Больничный', callback_data: 'cmd:sickleave' },
     ],
     [
@@ -183,7 +183,7 @@ export const MAIN_MENU_KEYBOARD: InlineKeyboardMarkup = {
 export const AFTER_SYMPTOM_KEYBOARD: InlineKeyboardMarkup = {
   inline_keyboard: [
     [
-      { text: '📅 Записаться к врачу', callback_data: 'action:appointment_start' },
+      { text: '👨‍⚕️ Визит к врачу', callback_data: 'action:appointment_start' },
       { text: '💊 Добавить напоминание', callback_data: 'action:reminder_start' },
     ],
     [

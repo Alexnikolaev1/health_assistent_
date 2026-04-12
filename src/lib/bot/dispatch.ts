@@ -36,6 +36,7 @@ import {
 import { formatHabitsList, formatHabitStats } from '@/lib/habits/engine';
 import { scheduleDailyReminder } from '@/lib/reminders/scheduler';
 import { buildWelcomeBody, HELP_TEXT } from '@/lib/bot/copy';
+import { SICK_LEAVE_INFO_TEXT } from '@/lib/physician-reminder';
 import logger from '@/utils/logger';
 
 export async function handleStart(chatId: number, firstName?: string): Promise<void> {
@@ -238,7 +239,7 @@ export async function handleAppointmentCommand(
 ): Promise<void> {
   await sendMessageWithKeyboard(
     chatId,
-    `📅 *Запись к врачу*\n\nВыберите специальность:`,
+    `👨‍⚕️ *Визит к врачу*\n\nВыберите специальности — бот подскажет, что сказать на приёме (запись в поликлинику вы оформляете сами).`,
     buildKeyboard([
       [
         { text: '🩺 Терапевт', callback_data: 'appt_spec:Терапевт' },
@@ -256,15 +257,11 @@ export async function handleAppointmentCommand(
   );
 }
 
-export async function handleSickLeaveCommand(chatId: number, dbUserId: number): Promise<void> {
-  await setConversationContext(dbUserId, 'dialog', { state: 'waiting_sickleave_period' }, 15);
-  await sendMessage(
-    chatId,
-    `📋 *Оформление больничного листа*\n\n` +
-      `⚠️ _Это демо-режим. Реальный больничный оформляется через поликлинику._\n\n` +
-      `Введите период нетрудоспособности в формате:\n*01.01.2024 - 07.01.2024*`,
-    { parse_mode: 'Markdown' }
-  );
+export async function handleSickLeaveCommand(chatId: number, _dbUserId: number): Promise<void> {
+  await sendMessage(chatId, SICK_LEAVE_INFO_TEXT, {
+    parse_mode: 'Markdown',
+    reply_markup: MAIN_MENU_KEYBOARD,
+  });
 }
 
 /**
