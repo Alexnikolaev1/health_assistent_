@@ -44,11 +44,17 @@ export function requireMaxBotToken(): string {
 }
 
 /**
- * Если задан WEBHOOK_SECRET — заголовок X-Webhook-Secret должен совпадать.
+ * Если задан WEBHOOK_SECRET — допустимы заголовки:
+ * - X-Max-Bot-Api-Secret (официальный MAX API при подписке с secret)
+ * - X-Webhook-Secret (совместимость со старыми прокси)
  * Если секрет не задан — пропускаем (удобно для локальной разработки).
  */
-export function isWebhookRequestAuthorized(secretHeader: string | null): boolean {
+export function isWebhookRequestAuthorized(req: {
+  headers: { get(name: string): string | null };
+}): boolean {
   const secret = process.env.WEBHOOK_SECRET?.trim();
   if (!secret) return true;
-  return secretHeader === secret;
+  const h1 = req.headers.get('x-webhook-secret');
+  const h2 = req.headers.get('x-max-bot-api-secret');
+  return h1 === secret || h2 === secret;
 }

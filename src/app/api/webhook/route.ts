@@ -1,25 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server';
-import type { MAXUpdate } from '@/types';
 import { isWebhookRequestAuthorized } from '@/lib/env';
 import { processBotUpdate, SERVICE_NAME, SERVICE_VERSION } from '@/lib/bot';
+import { normalizeIncomingUpdate } from '@/lib/max/normalize-webhook';
 import logger from '@/utils/logger';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
-  const secretHeader = req.headers.get('x-webhook-secret');
-  if (!isWebhookRequestAuthorized(secretHeader)) {
+  if (!isWebhookRequestAuthorized(req)) {
     logger.warn('Webhook rejected: invalid X-Webhook-Secret');
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  let update: MAXUpdate;
-
+  let raw: unknown;
   try {
-    update = (await req.json()) as MAXUpdate;
+    raw = await req.json();
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
+  }
+
+  const update = normalizeIncomingUpdate(raw);
+  if (!update) {
+    logger.debug({ raw }, 'Webhook body not mapped to update; skipping');
+    return NextResponse.json({ ok: true });
   }
 
   logger.debug({ update_id: update.update_id }, 'Received MAX update');

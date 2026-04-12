@@ -10,6 +10,8 @@
     "lint": "next lint",
     "test": "vitest run",
     "test:watch": "vitest",
+    "webhook:set": "node --env-file=.env.local scripts/set-max-webhook.mjs",
+    "tunnel": "npx localtunnel --port 3000",
     "db:migrate": "ts-node src/lib/db/migrate.ts"
   },
   "dependencies": {
