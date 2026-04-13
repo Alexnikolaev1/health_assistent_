@@ -35,12 +35,9 @@ async function platformRequest<T = unknown>(
     }
   }
 
-  /** Как в официальном max-bot-api-client-ts: POST без тела — без Content-Type и без JSON (важно для POST /answers). */
+  /** Любой переданный объект (включая пустой `{}`) сериализуется в JSON. MAX API для POST /answers требует непустое тело — минимум `{}`. */
   const hasJsonBody =
-    opts.body != null &&
-    typeof opts.body === 'object' &&
-    !Array.isArray(opts.body) &&
-    Object.keys(opts.body as object).length > 0;
+    opts.body != null && typeof opts.body === 'object' && !Array.isArray(opts.body);
 
   const init: RequestInit = {
     method: opts.method,
@@ -159,7 +156,7 @@ export async function answerCallbackQuery(
   await platformRequest('answers', {
     method: 'POST',
     query: { callback_id: callbackQueryId },
-    ...(Object.keys(body).length > 0 ? { body } : {}),
+    body,
   });
 }
 
