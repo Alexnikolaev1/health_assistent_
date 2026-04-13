@@ -19,6 +19,7 @@ import logger from '@/utils/logger';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
 
 // ==========================================
 // POST — вызов от Upstash QStash (разовое напоминание)

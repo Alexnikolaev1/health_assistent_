@@ -6,6 +6,8 @@ import logger from '@/utils/logger';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+/** Лимит выполнения на Vercel (App Router — задаётся здесь, не в vercel.json functions) */
+export const maxDuration = 30;
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   // console.* попадает в Vercel Runtime Logs даже при LOG_LEVEL=error и без pino
