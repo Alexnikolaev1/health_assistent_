@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Receiver } from '@upstash/qstash';
 import {
+  ensureDatabaseSchema,
   getDueReminders,
   markReminderSent,
   getDueDailyHabits,
@@ -84,6 +85,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   logger.info('Running cron check for due reminders');
 
   try {
+    await ensureDatabaseSchema();
     // Получаем напоминания, которые нужно отправить сейчас
     const dueReminders = await getDueReminders();
 

@@ -5,7 +5,7 @@
 import type { MAXUpdate } from '@/types';
 import {
   upsertUser,
-  ensureWebhookSchema,
+  ensureDatabaseSchema,
   claimProcessedUpdate,
   checkWebhookRateLimit,
   releaseProcessedUpdate,
@@ -23,7 +23,7 @@ export async function processBotUpdate(update: MAXUpdate): Promise<void> {
 
   const { chatId, userId, text, callbackData, callbackQueryId, username, firstName } = extracted;
 
-  await ensureWebhookSchema();
+  await ensureDatabaseSchema();
 
   const claimed = await claimProcessedUpdate(update.update_id);
   if (!claimed) {
