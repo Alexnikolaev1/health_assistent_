@@ -1,49 +1,85 @@
 // src/lib/max/client.ts
-// Клиент для MAX Bot API (совместим с Telegram Bot API)
+// Клиент MAX HTTP API: https://dev.max.ru/docs-api (platform-api.max.ru + Authorization)
 
-import { InlineKeyboardMarkup, MAXUpdate } from '@/types';
+import type { InlineKeyboardMarkup, InlineKeyboardButton, MAXUpdate } from '@/types';
+import { requireMaxBotToken } from '@/lib/env';
 import logger from '@/utils/logger';
 
-const MAX_API_URL = process.env.MAX_API_URL || 'https://botapi.max.ru';
-const BOT_TOKEN = process.env.MAX_BOT_TOKEN || '';
+/** База REST API (не botapi Telegram-стиля /botTOKEN/method) */
+function getPlatformBaseUrl(): string {
+  let u = process.env.MAX_API_URL?.trim() || 'https://platform-api.max.ru';
+  if (u.includes('botapi.max.ru')) {
+    u = 'https://platform-api.max.ru';
+  }
+  return u.replace(/\/$/, '');
+}
 
-// Базовый fetch-обёртка для MAX API
-async function maxApiCall<T = unknown>(
-  method: string,
-  params: Record<string, unknown> = {}
+type QueryRecord = Record<string, string | number | boolean | undefined | null>;
+
+async function platformRequest<T = unknown>(
+  path: string,
+  opts: { method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'; query?: QueryRecord; body?: Record<string, unknown> | null }
 ): Promise<T> {
-  const url = `${MAX_API_URL}/bot${BOT_TOKEN}/${method}`;
+  const token = requireMaxBotToken();
+  const base = getPlatformBaseUrl();
+  const url = new URL(path.replace(/^\//, ''), `${base}/`);
 
+  if (opts.query) {
+    for (const [k, v] of Object.entries(opts.query)) {
+      if (v === undefined || v === null) continue;
+      url.searchParams.set(k, String(v));
+    }
+  }
+
+  const init: RequestInit = {
+    method: opts.method,
+    headers: {
+      Authorization: token,
+      ...(opts.body && Object.keys(opts.body).length > 0 ? { 'Content-Type': 'application/json' } : {}),
+    },
+  };
+
+  if (opts.body && Object.keys(opts.body).length > 0) {
+    init.body = JSON.stringify(opts.body);
+  } else if (opts.method === 'POST' || opts.method === 'PUT' || opts.method === 'PATCH') {
+    init.headers = { ...init.headers, 'Content-Type': 'application/json' };
+    init.body = '{}';
+  }
+
+  const res = await fetch(url.toString(), init);
+  const raw = await res.text();
+
+  if (!res.ok) {
+    logger.error({ path, status: res.status, raw }, 'MAX platform API error');
+    throw new Error(`MAX API error ${res.status}: ${raw}`);
+  }
+
+  if (!raw) return {} as T;
   try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(params),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      logger.error({ method, status: response.status, error: errorText }, 'MAX API error');
-      throw new Error(`MAX API error ${response.status}: ${errorText}`);
-    }
-
-    const data = await response.json() as { ok: boolean; result: T; description?: string };
-
-    if (!data.ok) {
-      throw new Error(`MAX API returned ok=false: ${data.description}`);
-    }
-
-    return data.result;
-  } catch (error) {
-    logger.error({ method, params, error }, 'MAX API call failed');
-    throw error;
+    return JSON.parse(raw) as T;
+  } catch {
+    return {} as T;
   }
 }
 
+/** Telegram-совместимая inline_keyboard → вложения MAX */
+function mapInlineKeyboardToAttachments(markup?: InlineKeyboardMarkup): Array<Record<string, unknown>> | undefined {
+  if (!markup?.inline_keyboard?.length) return undefined;
+
+  const buttons = markup.inline_keyboard.map((row: InlineKeyboardButton[]) =>
+    row.map((btn) => {
+      if (btn.url) {
+        return { type: 'link', text: btn.text, url: btn.url };
+      }
+      return { type: 'callback', text: btn.text, payload: btn.callback_data ?? '' };
+    })
+  );
+
+  return [{ type: 'inline_keyboard', payload: { buttons } }];
+}
+
 // ==========================================
-// Отправка сообщения
+// Отправка сообщения — POST /messages
 // ==========================================
 
 export async function sendMessage(
@@ -55,11 +91,25 @@ export async function sendMessage(
     disable_web_page_preview?: boolean;
   } = {}
 ): Promise<void> {
-  await maxApiCall('sendMessage', {
-    chat_id: chatId,
-    text,
-    ...options,
-  });
+  const body: Record<string, unknown> = { text };
+
+  if (options.parse_mode === 'HTML') {
+    body.format = 'html';
+  } else if (options.parse_mode === 'Markdown' || options.parse_mode === 'MarkdownV2') {
+    body.format = 'markdown';
+  }
+
+  const attachments = mapInlineKeyboardToAttachments(options.reply_markup);
+  if (attachments) {
+    body.attachments = attachments;
+  }
+
+  const query: QueryRecord = { chat_id: chatId };
+  if (options.disable_web_page_preview !== undefined) {
+    query.disable_link_preview = options.disable_web_page_preview;
+  }
+
+  await platformRequest('messages', { method: 'POST', query, body });
 }
 
 // ==========================================
@@ -71,31 +121,35 @@ export async function sendMessageWithKeyboard(
   text: string,
   keyboard: InlineKeyboardMarkup
 ): Promise<void> {
-  await sendMessage(chatId, text, { reply_markup: keyboard });
+  await sendMessage(chatId, text, { reply_markup: keyboard, parse_mode: 'Markdown' });
 }
 
 // ==========================================
-// Ответ на callback query (убирает "часики" на кнопке)
+// Ответ на callback — POST /answers
 // ==========================================
 
 export async function answerCallbackQuery(
   callbackQueryId: string,
   text?: string,
-  showAlert: boolean = false
+  _showAlert: boolean = false
 ): Promise<void> {
-  await maxApiCall('answerCallbackQuery', {
-    callback_query_id: callbackQueryId,
-    ...(text && { text }),
-    show_alert: showAlert,
+  const body: Record<string, unknown> = {};
+  if (text) {
+    body.notification = text;
+  }
+  await platformRequest('answers', {
+    method: 'POST',
+    query: { callback_id: callbackQueryId },
+    body: Object.keys(body).length ? body : {},
   });
 }
 
 // ==========================================
-// Редактирование сообщения
+// Редактирование сообщения — PUT /messages
 // ==========================================
 
 export async function editMessageText(
-  chatId: number,
+  _chatId: number,
   messageId: number,
   text: string,
   options: {
@@ -103,41 +157,53 @@ export async function editMessageText(
     parse_mode?: 'HTML' | 'Markdown';
   } = {}
 ): Promise<void> {
-  await maxApiCall('editMessageText', {
-    chat_id: chatId,
-    message_id: messageId,
-    text,
-    ...options,
+  const body: Record<string, unknown> = { text };
+  if (options.parse_mode === 'HTML') {
+    body.format = 'html';
+  } else if (options.parse_mode === 'Markdown') {
+    body.format = 'markdown';
+  }
+  const attachments = mapInlineKeyboardToAttachments(options.reply_markup);
+  if (attachments) {
+    body.attachments = attachments;
+  }
+
+  await platformRequest('messages', {
+    method: 'PUT',
+    query: {
+      message_id: String(messageId),
+    },
+    body,
   });
 }
 
 // ==========================================
-// Установка вебхука
+// Вебхук — в MAX используется POST /subscriptions (см. scripts/set-max-webhook.mjs)
 // ==========================================
 
-export async function setWebhook(webhookUrl: string): Promise<void> {
-  await maxApiCall('setWebhook', {
-    url: webhookUrl,
-    allowed_updates: ['message', 'callback_query'],
-    drop_pending_updates: true,
-  });
-  logger.info({ webhookUrl }, 'Webhook set successfully');
+export async function setWebhook(_webhookUrl: string): Promise<void> {
+  throw new Error(
+    'Для MAX используйте platform-api: npm run webhook:set -- <url> (скрипт scripts/set-max-webhook.mjs), не Telegram setWebhook.'
+  );
 }
-
-// ==========================================
-// Удаление вебхука
-// ==========================================
 
 export async function deleteWebhook(): Promise<void> {
-  await maxApiCall('deleteWebhook', { drop_pending_updates: true });
+  throw new Error('Удаление подписки — через кабинет MAX / API subscriptions, не через deleteWebhook.');
 }
 
 // ==========================================
-// Получение информации о боте
+// Профиль бота — GET /me
 // ==========================================
 
 export async function getMe(): Promise<{ id: number; username: string; first_name: string }> {
-  return maxApiCall('getMe');
+  const data = await platformRequest<{ user_id?: number; name?: string; username?: string | null }>('me', {
+    method: 'GET',
+  });
+  return {
+    id: data.user_id ?? 0,
+    username: data.username ?? '',
+    first_name: data.name ?? '',
+  };
 }
 
 // ==========================================

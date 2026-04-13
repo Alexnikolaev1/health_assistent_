@@ -7,6 +7,7 @@ import { z } from 'zod';
 const serverEnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).optional(),
   MAX_BOT_TOKEN: z.string().min(1).optional(),
+  /** База REST: `https://platform-api.max.ru` (не botapi.max.ru с путём /botTOKEN/...) */
   MAX_API_URL: z.string().optional(),
   CRON_SECRET: z.string().min(1).optional(),
   POSTGRES_URL: z.string().min(1).optional(),
