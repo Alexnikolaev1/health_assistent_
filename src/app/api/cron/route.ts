@@ -1,6 +1,6 @@
 // src/app/api/cron/route.ts
 // Эндпоинт для проверки и отправки напоминаний
-// Вызывается Vercel Cron (каждую минуту) или Upstash QStash
+// POST — Upstash QStash (напоминания). GET — опционально: внешний cron или Vercel Pro (не Hobby: там cron ≤1/день).
 
 import { NextRequest, NextResponse } from 'next/server';
 import { Receiver } from '@upstash/qstash';
@@ -100,8 +100,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 }
 
 // ==========================================
-// GET — вызов от Vercel Cron (vercel.json: каждую минуту) + getDueReminders по локальному HH:MM.
-// Точное время и повтор на следующий день: Upstash QStash → POST /api/cron (scheduleDailyReminder).
+// GET — резерв: getDueReminders + привычки по локальному времени. На Vercel Hobby в vercel.json cron не задаём
+// (лимит «не чаще раза в день»). Для минутного опроса: внешний сервис (cron-job.org и т.п.) → GET с Bearer CRON_SECRET.
+// Точное время напоминаний: QStash → POST /api/cron (scheduleDailyReminder).
 // ==========================================
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
