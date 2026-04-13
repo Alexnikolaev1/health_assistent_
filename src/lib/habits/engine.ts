@@ -46,15 +46,6 @@ export const CHALLENGES: ChallengeDefinition[] = [
     emoji: '💧',
   },
   {
-    id: 'meditation_10min',
-    name: '10 минут медитации',
-    description: 'Медитируйте каждый день по 10 минут',
-    durationDays: 21,
-    goalPerDay: 1,
-    unit: 'сеансов',
-    emoji: '🧘',
-  },
-  {
     id: 'early_sleep',
     name: 'Ложиться до 23:00',
     description: 'Здоровый сон — ключ к здоровью. Отбой до 23:00',
