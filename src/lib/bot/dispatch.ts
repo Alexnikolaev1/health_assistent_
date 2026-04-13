@@ -125,8 +125,11 @@ export async function handleReminderCommand(
     const parsed = parseReminderCommand(parts.replace(/^add\s*/, ''));
     if (parsed) {
       const reminder = await createReminder(dbUserId, parsed.text, parsed.time);
-      await scheduleDailyReminder(reminder.id, dbUserId, maxUserId, parsed.text, parsed.time);
-      await sendMessage(maxUserId, `✅ Напоминание добавлено: *${parsed.text}* в *${parsed.time}*`, {
+      const qstashId = await scheduleDailyReminder(reminder.id, dbUserId, maxUserId, parsed.text, parsed.time);
+      const hint = qstashId
+        ? ''
+        : '\n\n_Для отправки в точное время нужны APP_URL и QSTASH_TOKEN на сервере._';
+      await sendMessage(maxUserId, `✅ Напоминание добавлено: *${parsed.text}* в *${parsed.time}*${hint}`, {
         parse_mode: 'Markdown',
       });
       return;

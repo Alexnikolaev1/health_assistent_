@@ -7,6 +7,7 @@ import { Receiver } from '@upstash/qstash';
 import {
   ensureDatabaseSchema,
   getDueReminders,
+  getReminderById,
   getUserById,
   markReminderSent,
   getDueDailyHabits,
@@ -16,6 +17,7 @@ import {
 } from '@/lib/db';
 import { sendMessageWithKeyboard, buildKeyboard } from '@/lib/max/client';
 import { shouldSendIntervalCronNudge } from '@/lib/habits/engine';
+import { scheduleDailyReminder } from '@/lib/reminders/scheduler';
 import type { CronPayload } from '@/types';
 import logger from '@/utils/logger';
 
@@ -69,10 +71,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 }
 
 // ==========================================
-// GET — вызов от Vercel Cron (см. vercel.json)
-// Hobby: не чаще 1 раза/сутки — у нас 08:00 UTC ежедневно.
-// Точные напоминания по времени: Upstash QStash → POST /api/cron (scheduleReminder).
-// Частый опрос: Pro или внешний ping на GET с CRON_SECRET.
+// GET — вызов от Vercel Cron (vercel.json: каждую минуту) + getDueReminders по локальному HH:MM.
+// Точное время и повтор на следующий день: Upstash QStash → POST /api/cron (scheduleDailyReminder).
 // ==========================================
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
@@ -163,6 +163,13 @@ async function processQStashPayload(payload: CronPayload): Promise<void> {
 
     if (payload.reminder_id) {
       await markReminderSent(payload.reminder_id);
+      const row = await getReminderById(payload.reminder_id);
+      if (row?.active) {
+        const next = await scheduleDailyReminder(row.id, row.user_id, 0, row.text, row.reminder_time);
+        if (!next) {
+          logger.warn({ reminder_id: row.id }, 'Could not reschedule next QStash reminder');
+        }
+      }
     }
   } else if (payload.type === 'habit') {
     await sendMessageWithKeyboard(

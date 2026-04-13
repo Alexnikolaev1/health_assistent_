@@ -148,6 +148,15 @@ export async function getUserReminders(userId: number, activeOnly: boolean = tru
   }, 'getUserReminders');
 }
 
+export async function getReminderById(id: number): Promise<DBReminder | null> {
+  return query(async () => {
+    const result = await sql<DBReminder>`
+      SELECT * FROM reminders WHERE id = ${id}
+    `;
+    return result.rows[0] ?? null;
+  }, 'getReminderById');
+}
+
 // Находим напоминания, которые нужно отправить прямо сейчас (время в часовом поясе пользователя)
 export async function getDueReminders(): Promise<Array<DBReminder & { max_user_id: number }>> {
   return query(async () => {

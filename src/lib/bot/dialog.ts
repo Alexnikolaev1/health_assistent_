@@ -97,11 +97,14 @@ export async function handleDialogContext(
       const reminder = await createReminder(dbUserId, reminderName, time);
       await clearConversationContext(dbUserId, 'dialog');
 
-      await scheduleDailyReminder(reminder.id, dbUserId, maxUserId, reminderName, time);
+      const qstashId = await scheduleDailyReminder(reminder.id, dbUserId, maxUserId, reminderName, time);
+      const qstashHint = qstashId
+        ? ''
+        : '\n\n_Если уведомление в это время не придёт: на проде должны быть заданы APP_URL и QSTASH_TOKEN._';
 
       await sendMessage(
         maxUserId,
-        `✅ Напоминание добавлено!\n\n💊 *${reminderName}*\n⏰ Каждый день в *${time}*`,
+        `✅ Напоминание добавлено!\n\n💊 *${reminderName}*\n⏰ Каждый день в *${time}* (ваш часовой пояс)${qstashHint}`,
         { parse_mode: 'Markdown' }
       );
       return;

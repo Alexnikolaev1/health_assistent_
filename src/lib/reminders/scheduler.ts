@@ -1,8 +1,10 @@
 // src/lib/reminders/scheduler.ts
 // Планировщик напоминаний через Upstash QStash
 
+import { DateTime } from 'luxon';
 import { Client as QStashClient } from '@upstash/qstash';
 import type { CronPayload } from '@/types';
+import { getUserById } from '@/lib/db';
 import logger from '@/utils/logger';
 
 let qstashClient: QStashClient | null = null;
@@ -37,36 +39,51 @@ export async function scheduleReminder(
     const result = await client.publishJSON({
       url: `${appUrl}/api/cron`,
       body: payload,
-      delay: delaySeconds,
+      delay: Math.max(30, delaySeconds),
       retries: 3,
     });
 
     logger.info({ messageId: result.messageId, delay: delaySeconds }, 'Reminder scheduled in QStash');
     return result.messageId;
   } catch (error) {
-    logger.error({ error, payload }, 'Failed to schedule QStash reminder');
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.error({ errorMessage, payload }, 'Failed to schedule QStash reminder');
     return null;
   }
 }
 
 // ==========================================
-// Расчёт задержки до следующего срабатывания
+// Расчёт задержки до следующего локального HH:MM (IANA), не UTC
 // ==========================================
 
-export function calculateDelayToTime(targetTime: string): number {
-  // targetTime: "HH:MM" в UTC
-  const [hours, minutes] = targetTime.split(':').map(Number);
-
-  const now = new Date();
-  const target = new Date();
-  target.setUTCHours(hours, minutes, 0, 0);
-
-  // Если время уже прошло сегодня — на завтра
-  if (target <= now) {
-    target.setUTCDate(target.getUTCDate() + 1);
+export function secondsUntilNextLocalHM(hhmm: string, ianaTimeZone: string): number {
+  const parts = hhmm.trim().split(':');
+  const h = parseInt(parts[0] ?? '0', 10);
+  const m = parseInt(parts[1] ?? '0', 10);
+  if (!Number.isFinite(h) || !Number.isFinite(m) || h < 0 || h > 23 || m < 0 || m > 59) {
+    logger.warn({ hhmm, ianaTimeZone }, 'Invalid HH:MM for reminder delay; using 60s');
+    return 60;
   }
 
-  return Math.floor((target.getTime() - now.getTime()) / 1000);
+  let tz = ianaTimeZone?.trim() || 'Europe/Moscow';
+  let now = DateTime.now().setZone(tz);
+  if (!now.isValid) {
+    logger.warn({ ianaTimeZone }, 'Invalid IANA timezone for reminder; using Europe/Moscow');
+    tz = 'Europe/Moscow';
+    now = DateTime.now().setZone(tz);
+  }
+  let target = now.set({ hour: h, minute: m, second: 0, millisecond: 0 });
+  if (target <= now) {
+    target = target.plus({ days: 1 });
+  }
+
+  const sec = Math.floor(target.diff(DateTime.now(), 'seconds').seconds);
+  return Math.max(30, sec);
+}
+
+/** @deprecated используйте secondsUntilNextLocalHM — раньше время ошибочно считалось в UTC */
+export function calculateDelayToTime(targetTime: string): number {
+  return secondsUntilNextLocalHM(targetTime, 'UTC');
 }
 
 // ==========================================
@@ -80,7 +97,9 @@ export async function scheduleDailyReminder(
   text: string,
   targetTime: string
 ): Promise<string | null> {
-  const delaySeconds = calculateDelayToTime(targetTime);
+  const user = await getUserById(dbUserId);
+  const tz = user?.timezone?.trim() || 'Europe/Moscow';
+  const delaySeconds = secondsUntilNextLocalHM(targetTime, tz);
 
   const payload: CronPayload = {
     reminder_id: reminderId,
@@ -103,7 +122,9 @@ export async function scheduleHabitReminder(
   habitName: string,
   targetTime: string
 ): Promise<string | null> {
-  const delaySeconds = calculateDelayToTime(targetTime);
+  const user = await getUserById(dbUserId);
+  const tz = user?.timezone?.trim() || 'Europe/Moscow';
+  const delaySeconds = secondsUntilNextLocalHM(targetTime, tz);
 
   const payload: CronPayload = {
     habit_id: habitId,
