@@ -39,31 +39,31 @@ import { buildWelcomeBody, HELP_TEXT } from '@/lib/bot/copy';
 import { SICK_LEAVE_INFO_TEXT } from '@/lib/physician-reminder';
 import logger from '@/utils/logger';
 
-export async function handleStart(chatId: number, firstName?: string): Promise<void> {
+export async function handleStart(maxUserId: number, firstName?: string): Promise<void> {
   const suffix = firstName ? `, ${firstName}` : '';
-  await sendMessageWithKeyboard(chatId, buildWelcomeBody(suffix), MAIN_MENU_KEYBOARD);
+  await sendMessageWithKeyboard(maxUserId, buildWelcomeBody(suffix), MAIN_MENU_KEYBOARD);
 }
 
-export async function handleHelp(chatId: number): Promise<void> {
-  await sendMessageWithKeyboard(chatId, HELP_TEXT, MAIN_MENU_KEYBOARD);
+export async function handleHelp(maxUserId: number): Promise<void> {
+  await sendMessageWithKeyboard(maxUserId, HELP_TEXT, MAIN_MENU_KEYBOARD);
 }
 
-export async function handleSymptomCommand(chatId: number, dbUserId: number, text: string): Promise<void> {
+export async function handleSymptomCommand(maxUserId: number, dbUserId: number, text: string): Promise<void> {
   const symptomText = text.replace('/symptom', '').trim();
   if (!symptomText) {
     await setConversationContext(dbUserId, 'dialog', { state: 'waiting_symptom' }, 10);
     await sendMessage(
-      chatId,
+      maxUserId,
       `🤒 Опишите ваши симптомы подробно:\n\n_Например: болит голова и температура 37.5_`,
       { parse_mode: 'Markdown' }
     );
     return;
   }
-  await handleSymptomAnalysis(chatId, dbUserId, symptomText);
+  await handleSymptomAnalysis(maxUserId, dbUserId, symptomText);
 }
 
-export async function handleSymptomAnalysis(chatId: number, dbUserId: number, symptomText: string): Promise<void> {
-  await sendMessage(chatId, `⏳ Анализирую симптомы...`);
+export async function handleSymptomAnalysis(maxUserId: number, dbUserId: number, symptomText: string): Promise<void> {
+  await sendMessage(maxUserId, `⏳ Анализирую симптомы...`);
 
   try {
     const result = await analyzeSymptoms(symptomText);
@@ -88,14 +88,14 @@ export async function handleSymptomAnalysis(chatId: number, dbUserId: number, sy
       60
     );
 
-    await sendMessageWithKeyboard(chatId, message, AFTER_SYMPTOM_KEYBOARD);
+    await sendMessageWithKeyboard(maxUserId, message, AFTER_SYMPTOM_KEYBOARD);
   } catch (error) {
     logger.error({ error, dbUserId }, 'Symptom analysis failed');
-    await sendError(chatId, 'Не удалось проанализировать симптомы. Проверьте настройки YandexGPT.');
+    await sendError(maxUserId, 'Не удалось проанализировать симптомы. Проверьте настройки YandexGPT.');
   }
 }
 
-export async function handleMetricsCommand(chatId: number, dbUserId: number): Promise<void> {
+export async function handleMetricsCommand(maxUserId: number, dbUserId: number): Promise<void> {
   const metrics = await getLatestMetrics(dbUserId);
 
   let message = `📊 *Ваш дневник здоровья*\n\n`;
@@ -111,13 +111,12 @@ export async function handleMetricsCommand(chatId: number, dbUserId: number): Pr
 
   message += `\nЧто добавить?`;
 
-  await sendMessageWithKeyboard(chatId, message, METRICS_KEYBOARD);
+  await sendMessageWithKeyboard(maxUserId, message, METRICS_KEYBOARD);
 }
 
 export async function handleReminderCommand(
-  chatId: number,
-  dbUserId: number,
   maxUserId: number,
+  dbUserId: number,
   text: string
 ): Promise<void> {
   const parts = text.replace('/reminder', '').trim();
@@ -127,7 +126,7 @@ export async function handleReminderCommand(
     if (parsed) {
       const reminder = await createReminder(dbUserId, parsed.text, parsed.time);
       await scheduleDailyReminder(reminder.id, dbUserId, maxUserId, parsed.text, parsed.time);
-      await sendMessage(chatId, `✅ Напоминание добавлено: *${parsed.text}* в *${parsed.time}*`, {
+      await sendMessage(maxUserId, `✅ Напоминание добавлено: *${parsed.text}* в *${parsed.time}*`, {
         parse_mode: 'Markdown',
       });
       return;
@@ -138,7 +137,7 @@ export async function handleReminderCommand(
     const reminders = await getUserReminders(dbUserId);
     if (reminders.length === 0) {
       await sendMessageWithKeyboard(
-        chatId,
+        maxUserId,
         `⏰ У вас нет активных напоминаний.\n\nДобавьте первое:`,
         {
           inline_keyboard: [[{ text: '➕ Добавить напоминание', callback_data: 'action:reminder_start' }]],
@@ -157,18 +156,17 @@ export async function handleReminderCommand(
 
     keyboard.push([{ text: '➕ Добавить', callback_data: 'action:reminder_start' }]);
 
-    await sendMessageWithKeyboard(chatId, message, { inline_keyboard: keyboard });
+    await sendMessageWithKeyboard(maxUserId, message, { inline_keyboard: keyboard });
     return;
   }
 
   await setConversationContext(dbUserId, 'dialog', { state: 'waiting_reminder_name' }, 10);
-  await sendMessage(chatId, `💊 Введите название лекарства или напоминания:`);
+  await sendMessage(maxUserId, `💊 Введите название лекарства или напоминания:`);
 }
 
 export async function handleHabitsCommand(
-  chatId: number,
-  dbUserId: number,
   maxUserId: number,
+  dbUserId: number,
   text: string
 ): Promise<void> {
   const parts = text.replace(/^\/habits?\s*/, '').trim();
@@ -176,7 +174,7 @@ export async function handleHabitsCommand(
   if (parts === 'stats') {
     const habits = await getUserHabits(dbUserId);
     if (habits.length === 0) {
-      await sendMessage(chatId, `📊 Нет привычек для статистики.`);
+      await sendMessage(maxUserId, `📊 Нет привычек для статистики.`);
       return;
     }
     let statsMessage = `📊 *Статистика привычек (7 дней):*\n\n`;
@@ -184,7 +182,7 @@ export async function handleHabitsCommand(
       const stats = await getHabitStats(dbUserId, habit.id, 7);
       statsMessage += formatHabitStats(habit, stats) + '\n\n';
     }
-    await sendMessage(chatId, statsMessage, { parse_mode: 'Markdown' });
+    await sendMessage(maxUserId, statsMessage, { parse_mode: 'Markdown' });
     return;
   }
 
@@ -200,7 +198,7 @@ export async function handleHabitsCommand(
     keyboard.push([{ text: '🏆 Челленджи', callback_data: 'habit:challenges' }]);
     keyboard.push([{ text: '📊 Статистика', callback_data: 'habit:stats' }]);
 
-    await sendMessageWithKeyboard(chatId, message, { inline_keyboard: keyboard });
+    await sendMessageWithKeyboard(maxUserId, message, { inline_keyboard: keyboard });
     return;
   }
 
@@ -212,10 +210,10 @@ export async function handleHabitsCommand(
         frequencyHours: parsed.intervalHours,
         scheduledTime: parsed.scheduledTime,
       });
-      await sendMessage(chatId, `✅ Привычка *${parsed.name}* добавлена!`, { parse_mode: 'Markdown' });
+      await sendMessage(maxUserId, `✅ Привычка *${parsed.name}* добавлена!`, { parse_mode: 'Markdown' });
     } else {
       await sendMessage(
-        chatId,
+        maxUserId,
         `⚠️ Формат: /habit add "название" every 2h\nили: /habit add "название" daily at 09:00`
       );
     }
@@ -223,7 +221,7 @@ export async function handleHabitsCommand(
   }
 
   await sendMessageWithKeyboard(
-    chatId,
+    maxUserId,
     `Не распознал команду. Используйте:\n` +
       `• /habits — список привычек\n` +
       `• /habits stats — статистика\n` +
@@ -233,12 +231,11 @@ export async function handleHabitsCommand(
 }
 
 export async function handleAppointmentCommand(
-  chatId: number,
-  _dbUserId: number,
-  _maxUserId: number
+  maxUserId: number,
+  _dbUserId: number
 ): Promise<void> {
   await sendMessageWithKeyboard(
-    chatId,
+    maxUserId,
     `👨‍⚕️ *Визит к врачу*\n\nВыберите специальности — бот подскажет, что сказать на приёме (запись в поликлинику вы оформляете сами).`,
     buildKeyboard([
       [
@@ -257,8 +254,8 @@ export async function handleAppointmentCommand(
   );
 }
 
-export async function handleSickLeaveCommand(chatId: number, _dbUserId: number): Promise<void> {
-  await sendMessage(chatId, SICK_LEAVE_INFO_TEXT, {
+export async function handleSickLeaveCommand(maxUserId: number, _dbUserId: number): Promise<void> {
+  await sendMessage(maxUserId, SICK_LEAVE_INFO_TEXT, {
     parse_mode: 'Markdown',
     reply_markup: MAIN_MENU_KEYBOARD,
   });
@@ -268,42 +265,41 @@ export async function handleSickLeaveCommand(chatId: number, _dbUserId: number):
  * Поток без активного многошагового диалога: команды и свободный текст.
  */
 export async function dispatchPlainMessage(
-  chatId: number,
-  dbUserId: number,
   maxUserId: number,
+  dbUserId: number,
   text: string,
   firstName?: string
 ): Promise<void> {
   if (text.startsWith('/start')) {
-    await handleStart(chatId, firstName);
+    await handleStart(maxUserId, firstName);
     return;
   }
   if (text.startsWith('/help')) {
-    await handleHelp(chatId);
+    await handleHelp(maxUserId);
     return;
   }
   if (text.startsWith('/symptom')) {
-    await handleSymptomCommand(chatId, dbUserId, text);
+    await handleSymptomCommand(maxUserId, dbUserId, text);
     return;
   }
   if (text.startsWith('/metrics')) {
-    await handleMetricsCommand(chatId, dbUserId);
+    await handleMetricsCommand(maxUserId, dbUserId);
     return;
   }
   if (text.startsWith('/reminder')) {
-    await handleReminderCommand(chatId, dbUserId, maxUserId, text);
+    await handleReminderCommand(maxUserId, dbUserId, text);
     return;
   }
   if (text.startsWith('/habits') || text.startsWith('/habit')) {
-    await handleHabitsCommand(chatId, dbUserId, maxUserId, text);
+    await handleHabitsCommand(maxUserId, dbUserId, text);
     return;
   }
   if (text.startsWith('/appointment')) {
-    await handleAppointmentCommand(chatId, dbUserId, maxUserId);
+    await handleAppointmentCommand(maxUserId, dbUserId);
     return;
   }
   if (text.startsWith('/sickleave')) {
-    await handleSickLeaveCommand(chatId, dbUserId);
+    await handleSickLeaveCommand(maxUserId, dbUserId);
     return;
   }
 
@@ -311,7 +307,7 @@ export async function dispatchPlainMessage(
   if (metric) {
     await saveMetric(dbUserId, metric.type, metric.value);
     await sendMessage(
-      chatId,
+      maxUserId,
       `✅ Сохранено: ${getMetricDisplayName(metric.type)} — *${metric.normalized}*`,
       { parse_mode: 'Markdown' }
     );
@@ -319,12 +315,12 @@ export async function dispatchPlainMessage(
   }
 
   if (isSymptomText(text) && text.length > 15) {
-    await handleSymptomAnalysis(chatId, dbUserId, text);
+    await handleSymptomAnalysis(maxUserId, dbUserId, text);
     return;
   }
 
   await sendMessage(
-    chatId,
+    maxUserId,
     `Привет! Не совсем понял. Воспользуйтесь меню или опишите симптомы.`,
     { reply_markup: MAIN_MENU_KEYBOARD }
   );

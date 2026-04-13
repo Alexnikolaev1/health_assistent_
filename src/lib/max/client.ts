@@ -80,10 +80,11 @@ function mapInlineKeyboardToAttachments(markup?: InlineKeyboardMarkup): Array<Re
 
 // ==========================================
 // Отправка сообщения — POST /messages
+// В личке с ботом указывайте user_id (id пользователя MAX), не chat_id — иначе chat.not.found
 // ==========================================
 
 export async function sendMessage(
-  chatId: number,
+  maxUserId: number,
   text: string,
   options: {
     reply_markup?: InlineKeyboardMarkup;
@@ -104,7 +105,7 @@ export async function sendMessage(
     body.attachments = attachments;
   }
 
-  const query: QueryRecord = { chat_id: chatId };
+  const query: QueryRecord = { user_id: maxUserId };
   if (options.disable_web_page_preview !== undefined) {
     query.disable_link_preview = options.disable_web_page_preview;
   }
@@ -117,11 +118,11 @@ export async function sendMessage(
 // ==========================================
 
 export async function sendMessageWithKeyboard(
-  chatId: number,
+  maxUserId: number,
   text: string,
   keyboard: InlineKeyboardMarkup
 ): Promise<void> {
-  await sendMessage(chatId, text, { reply_markup: keyboard, parse_mode: 'Markdown' });
+  await sendMessage(maxUserId, text, { reply_markup: keyboard, parse_mode: 'Markdown' });
 }
 
 // ==========================================
@@ -285,12 +286,12 @@ export const METRICS_KEYBOARD: InlineKeyboardMarkup = {
 };
 
 // Хелпер для отправки сообщений об ошибках пользователю
-export async function sendError(chatId: number, details?: string): Promise<void> {
+export async function sendError(maxUserId: number, details?: string): Promise<void> {
   const text = details
     ? `❌ Произошла ошибка: ${details}\n\nПопробуйте ещё раз или напишите /help`
     : '❌ Что-то пошло не так. Попробуйте ещё раз или напишите /help';
 
-  await sendMessage(chatId, text);
+  await sendMessage(maxUserId, text);
 }
 
 // Разбор объекта MAXUpdate для извлечения основных данных

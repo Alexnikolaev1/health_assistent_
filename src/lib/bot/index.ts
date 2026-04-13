@@ -42,18 +42,18 @@ export async function processBotUpdate(update: MAXUpdate): Promise<void> {
     const dbUser = await upsertUser(userId, username, firstName);
 
     if (callbackData && callbackQueryId) {
-      await handleCallbackQuery(chatId, dbUser.id, userId, callbackData, callbackQueryId);
+      await handleCallbackQuery(userId, dbUser.id, callbackData, callbackQueryId);
       return;
     }
 
     if (text) {
-      await handleUserTextMessage(chatId, dbUser.id, userId, text, firstName);
+      await handleUserTextMessage(userId, dbUser.id, text, firstName);
     } else if (update.message) {
       console.warn('[bot] message update with empty text; check normalize-webhook / MAX payload');
       logger.warn({ update_id: update.update_id }, 'Empty text on message update');
     }
   } catch (error) {
     logger.error({ error, chatId, userId }, 'Error handling MAX update');
-    await sendError(chatId, 'Внутренняя ошибка сервера');
+    await sendError(userId, 'Внутренняя ошибка сервера');
   }
 }

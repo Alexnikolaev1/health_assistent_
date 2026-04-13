@@ -25,9 +25,8 @@ import { handleSymptomAnalysis, dispatchPlainMessage } from './dispatch';
 import type { MetricType } from '@/types';
 
 export async function handleDialogContext(
-  chatId: number,
-  dbUserId: number,
   maxUserId: number,
+  dbUserId: number,
   text: string,
   context: Record<string, unknown>,
   firstName?: string
@@ -40,12 +39,12 @@ export async function handleDialogContext(
       await clearConversationContext(dbUserId, 'dialog');
       if (t.length < 10) {
         await sendMessage(
-          chatId,
+          maxUserId,
           `Опишите симптомы чуть подробнее (не меньше ~10 символов) или используйте /help.`
         );
         return;
       }
-      await handleSymptomAnalysis(chatId, dbUserId, t);
+      await handleSymptomAnalysis(maxUserId, dbUserId, t);
       return;
     }
 
@@ -54,7 +53,7 @@ export async function handleDialogContext(
       const metric = parseMetricFromText(`${metricType} ${text}`) ?? parseMetricFromText(text);
       if (!metric) {
         await sendMessage(
-          chatId,
+          maxUserId,
           `⚠️ Не удалось распознать значение. Введите, например: *120/80* или *75*`,
           { parse_mode: 'Markdown' }
         );
@@ -63,7 +62,7 @@ export async function handleDialogContext(
       await saveMetric(dbUserId, metricType, text.trim());
       await clearConversationContext(dbUserId, 'dialog');
       await sendMessage(
-        chatId,
+        maxUserId,
         `✅ ${getMetricDisplayName(metricType)}: *${formatMetricValue(metricType, text.trim())}* сохранено!`,
         { parse_mode: 'Markdown' }
       );
@@ -73,7 +72,7 @@ export async function handleDialogContext(
     case 'waiting_reminder_name': {
       await setConversationContext(dbUserId, 'dialog', { state: 'waiting_reminder_time', name: text.trim() }, 10);
       await sendMessage(
-        chatId,
+        maxUserId,
         `⏰ В какое время напомнить? Введите время в формате *ЧЧ:ММ* (например, 20:00):`,
         { parse_mode: 'Markdown' }
       );
@@ -84,7 +83,7 @@ export async function handleDialogContext(
       const timeMatch = text.match(/^(\d{1,2}):(\d{2})$/);
       if (!timeMatch) {
         await sendMessage(
-          chatId,
+          maxUserId,
           `⚠️ Неверный формат. Введите время как *ЧЧ:ММ*, например: 20:00`,
           { parse_mode: 'Markdown' }
         );
@@ -101,7 +100,7 @@ export async function handleDialogContext(
       await scheduleDailyReminder(reminder.id, dbUserId, maxUserId, reminderName, time);
 
       await sendMessage(
-        chatId,
+        maxUserId,
         `✅ Напоминание добавлено!\n\n💊 *${reminderName}*\n⏰ Каждый день в *${time}*`,
         { parse_mode: 'Markdown' }
       );
@@ -111,7 +110,7 @@ export async function handleDialogContext(
     case 'waiting_habit_name': {
       await setConversationContext(dbUserId, 'dialog', { state: 'waiting_habit_frequency', name: text.trim() }, 10);
       await sendMessageWithKeyboard(
-        chatId,
+        maxUserId,
         `💪 Привычка: *${text.trim()}*\n\nКак часто вы хотите это делать?`,
         buildKeyboard([
           [
@@ -131,16 +130,16 @@ export async function handleDialogContext(
     case 'waiting_physician_specialty_other': {
       const specialty = text.trim();
       if (!specialty) {
-        await sendMessage(chatId, `Введите название специальности одним сообщением.`);
+        await sendMessage(maxUserId, `Введите название специальности одним сообщением.`);
         return;
       }
       await clearConversationContext(dbUserId, 'dialog');
-      await sendPhysicianReminderToChat(chatId, dbUserId, specialty);
+      await sendPhysicianReminderToChat(maxUserId, dbUserId, specialty);
       return;
     }
 
     default:
       await clearConversationContext(dbUserId, 'dialog');
-      await dispatchPlainMessage(chatId, dbUserId, maxUserId, text, firstName);
+      await dispatchPlainMessage(maxUserId, dbUserId, text, firstName);
   }
 }

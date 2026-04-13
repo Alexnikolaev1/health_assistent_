@@ -15,7 +15,7 @@ const AFTER_PHYSICIAN_KEYBOARD: InlineKeyboardMarkup = {
 };
 
 export async function sendPhysicianReminderToChat(
-  chatId: number,
+  maxUserId: number,
   dbUserId: number,
   specialty: string
 ): Promise<void> {
@@ -23,7 +23,7 @@ export async function sendPhysicianReminderToChat(
   const diagnosis = last?.diagnosis as string | undefined;
   const doctorType = last?.doctor_type as string | undefined;
   const text = buildPhysicianReminderMessage(specialty, { diagnosis, doctorType });
-  await sendMessage(chatId, text, {
+  await sendMessage(maxUserId, text, {
     reply_markup: AFTER_PHYSICIAN_KEYBOARD,
     parse_mode: 'Markdown',
   });

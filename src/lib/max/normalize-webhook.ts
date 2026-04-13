@@ -137,12 +137,18 @@ export function normalizeIncomingUpdate(body: unknown): MAXUpdate | null {
     const callbackId = str(cb.callback_id ?? cb.id ?? '');
     const payload = str(cb.payload ?? cb.data ?? '');
     const user = (cb.user as UnknownRec) || (cb.sender as UnknownRec) || {};
-    const userId = num(user.user_id ?? user.id, 0);
-    const messageObj = (cb.message as UnknownRec) || {};
+    const userId = num(user.user_id ?? user.userId ?? user.id, 0);
+    /** Полное сообщение часто в корне update, а не только в callback.message */
+    const messageObj = (
+      u.message && typeof u.message === 'object' ? u.message : cb.message
+    ) as UnknownRec;
 
     const sender = (messageObj.sender as UnknownRec) || {};
     const recipient = (messageObj.recipient as UnknownRec) || {};
-    const chatId = num(recipient.chat_id ?? recipient.id ?? userId, userId);
+    const chatId = num(
+      recipient.chat_id ?? (recipient as UnknownRec).chatId ?? recipient.id ?? userId,
+      userId
+    );
     const messageId = num(messageObj.id ?? messageObj.mid ?? 1, 1);
 
     const from: MAXUser = {

@@ -9,22 +9,21 @@ import { handleDialogContext } from './dialog';
 import { dispatchPlainMessage } from './dispatch';
 
 export async function handleUserTextMessage(
-  chatId: number,
-  dbUserId: number,
   maxUserId: number,
+  dbUserId: number,
   text: string,
   firstName?: string
 ): Promise<void> {
   if (text.trim().startsWith('/cancel')) {
     await clearConversationContext(dbUserId, 'dialog');
-    await sendMessage(chatId, CANCEL_OK, { reply_markup: MAIN_MENU_KEYBOARD });
+    await sendMessage(maxUserId, CANCEL_OK, { reply_markup: MAIN_MENU_KEYBOARD });
     return;
   }
 
   const activeContext = await getConversationContext(dbUserId, 'dialog');
   if (activeContext) {
-    await handleDialogContext(chatId, dbUserId, maxUserId, text, activeContext, firstName);
+    await handleDialogContext(maxUserId, dbUserId, text, activeContext, firstName);
     return;
   }
-  await dispatchPlainMessage(chatId, dbUserId, maxUserId, text, firstName);
+  await dispatchPlainMessage(maxUserId, dbUserId, text, firstName);
 }
