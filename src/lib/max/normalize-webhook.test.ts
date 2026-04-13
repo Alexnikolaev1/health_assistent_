@@ -31,4 +31,34 @@ describe('normalizeIncomingUpdate', () => {
     });
     expect(u!.message?.text).toBe('/start promo');
   });
+
+  it('maps message_created like official MAX Message (body.text, body.mid)', () => {
+    const u = normalizeIncomingUpdate({
+      update_type: 'message_created',
+      timestamp: 1700000000000,
+      message: {
+        sender: { user_id: 99, name: 'U', username: 'u', is_bot: false, last_activity_time: 0 },
+        recipient: { chat_id: 99, chat_type: 'dialog' },
+        timestamp: 1700000000000,
+        body: { mid: 'mid-1', seq: 1, text: '/start', attachments: null },
+      },
+    });
+    expect(u?.message?.text).toBe('/start');
+    expect(u?.message?.chat.id).toBe(99);
+    expect(u?.message?.from?.id).toBe(99);
+  });
+
+  it('accepts camelCase userId / chatId', () => {
+    const u = normalizeIncomingUpdate({
+      update_type: 'message_created',
+      timestamp: 1700000000001,
+      message: {
+        sender: { userId: 5, name: 'U' },
+        recipient: { chatId: 5 },
+        body: { mid: 'x', seq: 0, text: 'hi', attachments: null },
+      },
+    });
+    expect(u?.message?.text).toBe('hi');
+    expect(u?.message?.chat.id).toBe(5);
+  });
 });

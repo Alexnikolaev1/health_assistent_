@@ -18,33 +18,63 @@ function str(v: unknown): string {
   return v == null ? '' : String(v);
 }
 
+/** Текст из body: объект NewMessageBody (`text`), строка или редкие варианты */
+function extractMessageBodyText(body: unknown): string {
+  if (body == null) return '';
+  if (typeof body === 'string') return body;
+  if (typeof body === 'object') {
+    const b = body as UnknownRec;
+    return str(b.text ?? b.message ?? b.caption ?? '');
+  }
+  return '';
+}
+
 /** Платформенный webhook → внутренний MAXUpdate */
 export function normalizeIncomingUpdate(body: unknown): MAXUpdate | null {
   if (!body || typeof body !== 'object') return null;
 
   const u = body as UnknownRec;
 
-  // Уже в «старом» виде (если прокси отдаёт Telegram-форму)
-  if (u.message || u.callback_query) {
+  const updateType = str(u.update_type);
+
+  // Платформа MAX всегда шлёт update_type; без него — «телеграмный» вид от прокси
+  if (!updateType && (u.message || u.callback_query)) {
     return body as MAXUpdate;
   }
 
-  const updateType = str(u.update_type);
+  if (!updateType) {
+    return null;
+  }
   const ts = num(u.timestamp, Date.now());
 
   if (updateType === 'message_created' && u.message && typeof u.message === 'object') {
     const msg = u.message as UnknownRec;
     const sender = (msg.sender as UnknownRec) || {};
     const recipient = (msg.recipient as UnknownRec) || {};
-    const messageBody = (msg.body as UnknownRec) || {};
+    const rawBody = msg.body;
 
-    const userId = num(sender.user_id ?? sender.id, 0);
+    const userId = num(
+      sender.user_id ?? (sender as UnknownRec).userId ?? sender.id,
+      0
+    );
     const chatId = num(
-      recipient.chat_id ?? recipient.id ?? recipient.user_id ?? userId,
+      recipient.chat_id ??
+        (recipient as UnknownRec).chatId ??
+        recipient.id ??
+        recipient.user_id ??
+        userId,
       userId
     );
-    const text = str(messageBody.text ?? messageBody.message ?? '');
-    const messageId = num(msg.id ?? msg.mid ?? ts % 1_000_000_000, 1);
+
+    const messageBody = typeof rawBody === 'object' && rawBody ? (rawBody as UnknownRec) : {};
+    const text =
+      extractMessageBodyText(rawBody) ||
+      str(messageBody.text ?? messageBody.message ?? messageBody.caption ?? '');
+    const midForId = messageBody.mid ?? msg.mid ?? msg.id;
+    const messageId = num(
+      msg.id ?? msg.mid ?? (/^\d+$/.test(String(midForId)) ? midForId : ts % 1_000_000_000),
+      1
+    );
 
     const from: MAXUser = {
       id: userId,
@@ -74,7 +104,7 @@ export function normalizeIncomingUpdate(body: unknown): MAXUpdate | null {
   /** Старт диалога с ботом (кнопка «Начать») — приходит как отдельное событие, не как текст /start */
   if (updateType === 'bot_started') {
     const userRec = (u.user as UnknownRec) || {};
-    const userId = num(userRec.user_id ?? userRec.id, 0);
+    const userId = num(userRec.user_id ?? userRec.userId ?? userRec.id, 0);
     const chatId = num(u.chat_id ?? userId, userId);
     const ts = num(u.timestamp, Date.now());
     const payload = u.payload != null && str(u.payload).length > 0 ? str(u.payload) : '';
