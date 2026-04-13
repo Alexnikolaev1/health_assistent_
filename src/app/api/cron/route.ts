@@ -64,8 +64,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 }
 
 // ==========================================
-// GET — вызов от Vercel Cron (каждую минуту)
-// Проверяет БД на наличие напоминаний к отправке
+// GET — вызов от Vercel Cron (см. vercel.json)
+// Hobby: не чаще 1 раза/сутки — у нас 08:00 UTC ежедневно.
+// Точные напоминания по времени: Upstash QStash → POST /api/cron (scheduleReminder).
+// Частый опрос: Pro или внешний ping на GET с CRON_SECRET.
 // ==========================================
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
