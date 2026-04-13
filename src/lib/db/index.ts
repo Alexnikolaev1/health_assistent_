@@ -346,6 +346,38 @@ export async function getSymptomHistory(userId: number, limit: number = 5): Prom
 // Идемпотентность и rate limit вебхука
 // ==========================================
 
+let webhookSchemaEnsured = false;
+
+/**
+ * Создаёт таблицы вебхука, если их ещё нет (часто забывают применить schema.sql / миграцию в Neon).
+ * Идемпотентно, один раз за жизнь процесса после успеха.
+ */
+export async function ensureWebhookSchema(): Promise<void> {
+  if (webhookSchemaEnsured) return;
+  await query(async () => {
+    await sql`
+      CREATE TABLE IF NOT EXISTS processed_updates (
+        update_id BIGINT PRIMARY KEY,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `;
+    await sql`
+      CREATE INDEX IF NOT EXISTS idx_processed_updates_created ON processed_updates(created_at DESC)
+    `;
+    await sql`
+      CREATE TABLE IF NOT EXISTS webhook_rate_events (
+        id BIGSERIAL PRIMARY KEY,
+        max_user_id BIGINT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `;
+    await sql`
+      CREATE INDEX IF NOT EXISTS idx_webhook_rate_user_time ON webhook_rate_events(max_user_id, created_at DESC)
+    `;
+    webhookSchemaEnsured = true;
+  }, 'ensureWebhookSchema');
+}
+
 /** true — апдейт новый и зарезервирован; false — дубликат, обработку пропускаем */
 export async function claimProcessedUpdate(updateId: number): Promise<boolean> {
   return query(async () => {
