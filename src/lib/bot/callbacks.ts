@@ -31,6 +31,7 @@ import {
   handleAppointmentCommand,
   handleSickLeaveCommand,
 } from './dispatch';
+import logger from '@/utils/logger';
 
 export async function handleInlineCallback(
   maxUserId: number,
@@ -248,6 +249,13 @@ export async function handleCallbackQuery(
   data: string,
   callbackQueryId: string
 ): Promise<void> {
-  await answerCallbackQuery(callbackQueryId);
+  try {
+    await answerCallbackQuery(callbackQueryId);
+  } catch (err) {
+    logger.warn(
+      { err, callbackQueryId: String(callbackQueryId).slice(0, 80), maxUserId },
+      'answerCallbackQuery (POST /answers) failed; continuing with handler'
+    );
+  }
   await handleInlineCallback(maxUserId, dbUserId, data);
 }

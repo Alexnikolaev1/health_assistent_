@@ -14,7 +14,8 @@ async function query<T>(operation: () => Promise<T>, context: string): Promise<T
   try {
     return await operation();
   } catch (error) {
-    logger.error({ context, error }, 'Database query failed');
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.error({ context, errorMessage, errorStack: error instanceof Error ? error.stack : undefined }, 'Database query failed');
     throw error;
   }
 }
@@ -50,6 +51,15 @@ export async function getUserByMaxId(maxUserId: number): Promise<DBUser | null> 
     `;
     return result.rows[0] ?? null;
   }, 'getUserByMaxId');
+}
+
+export async function getUserById(id: number): Promise<DBUser | null> {
+  return query(async () => {
+    const result = await sql<DBUser>`
+      SELECT * FROM users WHERE id = ${id}
+    `;
+    return result.rows[0] ?? null;
+  }, 'getUserById');
 }
 
 // ==========================================

@@ -18,7 +18,11 @@ type QueryRecord = Record<string, string | number | boolean | undefined | null>;
 
 async function platformRequest<T = unknown>(
   path: string,
-  opts: { method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'; query?: QueryRecord; body?: Record<string, unknown> | null }
+  opts: {
+    method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+    query?: QueryRecord;
+    body?: Record<string, unknown> | null;
+  }
 ): Promise<T> {
   const token = requireMaxBotToken();
   const base = getPlatformBaseUrl();
@@ -31,19 +35,23 @@ async function platformRequest<T = unknown>(
     }
   }
 
+  /** Как в официальном max-bot-api-client-ts: POST без тела — без Content-Type и без JSON (важно для POST /answers). */
+  const hasJsonBody =
+    opts.body != null &&
+    typeof opts.body === 'object' &&
+    !Array.isArray(opts.body) &&
+    Object.keys(opts.body as object).length > 0;
+
   const init: RequestInit = {
     method: opts.method,
     headers: {
       Authorization: token,
-      ...(opts.body && Object.keys(opts.body).length > 0 ? { 'Content-Type': 'application/json' } : {}),
+      ...(hasJsonBody ? { 'Content-Type': 'application/json' } : {}),
     },
   };
 
-  if (opts.body && Object.keys(opts.body).length > 0) {
+  if (hasJsonBody) {
     init.body = JSON.stringify(opts.body);
-  } else if (opts.method === 'POST' || opts.method === 'PUT' || opts.method === 'PATCH') {
-    init.headers = { ...init.headers, 'Content-Type': 'application/json' };
-    init.body = '{}';
   }
 
   const res = await fetch(url.toString(), init);
@@ -80,16 +88,19 @@ function mapInlineKeyboardToAttachments(markup?: InlineKeyboardMarkup): Array<Re
 
 // ==========================================
 // Отправка сообщения — POST /messages
-// В личке с ботом указывайте user_id (id пользователя MAX), не chat_id — иначе chat.not.found
+// Документация: для сообщения пользователю — query user_id (id пользователя в MAX).
+// chat_id — только для отправки в чат (группа и т.д.), не путать с recipient.chat_id из вебхука.
 // ==========================================
 
 export async function sendMessage(
-  maxUserId: number,
+  recipientId: number,
   text: string,
   options: {
     reply_markup?: InlineKeyboardMarkup;
     parse_mode?: 'HTML' | 'Markdown' | 'MarkdownV2';
     disable_web_page_preview?: boolean;
+    /** true — recipientId это chat_id (групповой чат). Иначе — user_id личного пользователя. */
+    recipientChatId?: boolean;
   } = {}
 ): Promise<void> {
   const body: Record<string, unknown> = { text };
@@ -105,7 +116,9 @@ export async function sendMessage(
     body.attachments = attachments;
   }
 
-  const query: QueryRecord = { user_id: maxUserId };
+  const query: QueryRecord = options.recipientChatId
+    ? { chat_id: recipientId }
+    : { user_id: recipientId };
   if (options.disable_web_page_preview !== undefined) {
     query.disable_link_preview = options.disable_web_page_preview;
   }
@@ -118,11 +131,16 @@ export async function sendMessage(
 // ==========================================
 
 export async function sendMessageWithKeyboard(
-  maxUserId: number,
+  recipientId: number,
   text: string,
-  keyboard: InlineKeyboardMarkup
+  keyboard: InlineKeyboardMarkup,
+  opts?: { recipientChatId?: boolean }
 ): Promise<void> {
-  await sendMessage(maxUserId, text, { reply_markup: keyboard, parse_mode: 'Markdown' });
+  await sendMessage(recipientId, text, {
+    reply_markup: keyboard,
+    parse_mode: 'Markdown',
+    recipientChatId: opts?.recipientChatId,
+  });
 }
 
 // ==========================================
@@ -141,7 +159,7 @@ export async function answerCallbackQuery(
   await platformRequest('answers', {
     method: 'POST',
     query: { callback_id: callbackQueryId },
-    body: Object.keys(body).length ? body : {},
+    ...(Object.keys(body).length > 0 ? { body } : {}),
   });
 }
 
@@ -286,12 +304,16 @@ export const METRICS_KEYBOARD: InlineKeyboardMarkup = {
 };
 
 // Хелпер для отправки сообщений об ошибках пользователю
-export async function sendError(maxUserId: number, details?: string): Promise<void> {
+export async function sendError(
+  recipientId: number,
+  details?: string,
+  opts?: { recipientChatId?: boolean }
+): Promise<void> {
   const text = details
     ? `❌ Произошла ошибка: ${details}\n\nПопробуйте ещё раз или напишите /help`
     : '❌ Что-то пошло не так. Попробуйте ещё раз или напишите /help';
 
-  await sendMessage(maxUserId, text);
+  await sendMessage(recipientId, text, { recipientChatId: opts?.recipientChatId });
 }
 
 // Разбор объекта MAXUpdate для извлечения основных данных
@@ -319,12 +341,15 @@ export function extractUpdateData(update: MAXUpdate): {
 
   if (update.callback_query) {
     const { callback_query } = update;
+    const rawId = callback_query.id as string | number | undefined;
+    const callbackQueryId =
+      rawId !== undefined && rawId !== null && String(rawId).trim() !== '' ? String(rawId) : undefined;
     return {
       chatId: callback_query.message?.chat.id ?? callback_query.from.id,
       userId: callback_query.from.id,
       text: callback_query.data ?? '',
       callbackData: callback_query.data,
-      callbackQueryId: callback_query.id,
+      callbackQueryId,
       messageId: callback_query.message?.message_id,
       username: callback_query.from.username,
       firstName: callback_query.from.first_name,

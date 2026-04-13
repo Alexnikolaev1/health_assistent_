@@ -44,8 +44,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
     await processBotUpdate(update);
   } catch (e) {
-    console.error('[webhook] processBotUpdate failed', e);
-    logger.error({ error: e }, 'processBotUpdate threw');
+    const msg = e instanceof Error ? e.message : String(e);
+    const stack = e instanceof Error ? e.stack : undefined;
+    console.error('[webhook] processBotUpdate failed', msg, stack ?? '');
+    logger.error({ errorMessage: msg, errorStack: stack }, 'processBotUpdate threw');
     return NextResponse.json({ error: 'Internal error' }, { status: 500 });
   }
 

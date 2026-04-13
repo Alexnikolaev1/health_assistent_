@@ -75,8 +75,8 @@ export function calculateDelayToTime(targetTime: string): number {
 
 export async function scheduleDailyReminder(
   reminderId: number,
-  userId: number,
-  maxUserId: number,
+  dbUserId: number,
+  _maxUserId: number,
   text: string,
   targetTime: string
 ): Promise<string | null> {
@@ -84,10 +84,9 @@ export async function scheduleDailyReminder(
 
   const payload: CronPayload = {
     reminder_id: reminderId,
-    user_id: userId,
+    user_id: dbUserId,
     type: 'reminder',
     text,
-    chat_id: maxUserId,
   };
 
   return scheduleReminder(payload, delaySeconds);
@@ -99,8 +98,8 @@ export async function scheduleDailyReminder(
 
 export async function scheduleHabitReminder(
   habitId: number,
-  userId: number,
-  maxUserId: number,
+  dbUserId: number,
+  _maxUserId: number,
   habitName: string,
   targetTime: string
 ): Promise<string | null> {
@@ -108,10 +107,9 @@ export async function scheduleHabitReminder(
 
   const payload: CronPayload = {
     habit_id: habitId,
-    user_id: userId,
+    user_id: dbUserId,
     type: 'habit',
     text: habitName,
-    chat_id: maxUserId,
   };
 
   return scheduleReminder(payload, delaySeconds);

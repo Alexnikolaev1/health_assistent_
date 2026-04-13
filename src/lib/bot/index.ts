@@ -17,11 +17,30 @@ import logger from '@/utils/logger';
 
 export { SERVICE_NAME, SERVICE_VERSION } from './constants';
 
+function formatCaughtError(e: unknown): { message: string; stack?: string } {
+  if (e instanceof Error) {
+    return { message: e.message, stack: e.stack };
+  }
+  if (typeof e === 'string') {
+    return { message: e };
+  }
+  try {
+    return { message: JSON.stringify(e) };
+  } catch {
+    return { message: String(e) };
+  }
+}
+
 export async function processBotUpdate(update: MAXUpdate): Promise<void> {
   const extracted = extractUpdateData(update);
   if (!extracted) return;
 
   const { chatId, userId, text, callbackData, callbackQueryId, username, firstName } = extracted;
+
+  if (userId <= 0) {
+    logger.warn({ update_id: update.update_id }, 'Update without user id, skip');
+    return;
+  }
 
   await ensureDatabaseSchema();
 
@@ -38,11 +57,15 @@ export async function processBotUpdate(update: MAXUpdate): Promise<void> {
     return;
   }
 
+  const callbackIdStr =
+    callbackQueryId !== undefined && callbackQueryId !== null ? String(callbackQueryId).trim() : '';
+
   try {
     const dbUser = await upsertUser(userId, username, firstName);
 
-    if (callbackData && callbackQueryId) {
-      await handleCallbackQuery(userId, dbUser.id, callbackData, callbackQueryId);
+    // Пустой id ломал ветку callback (falsy); id должен быть непустой строкой для POST /answers
+    if (callbackData && callbackIdStr.length > 0) {
+      await handleCallbackQuery(userId, dbUser.id, callbackData, callbackIdStr);
       return;
     }
 
@@ -53,7 +76,32 @@ export async function processBotUpdate(update: MAXUpdate): Promise<void> {
       logger.warn({ update_id: update.update_id }, 'Empty text on message update');
     }
   } catch (error) {
-    logger.error({ error, chatId, userId }, 'Error handling MAX update');
-    await sendError(userId, 'Внутренняя ошибка сервера');
+    const { message: botErrorMessage, stack: botErrorStack } = formatCaughtError(error);
+    // console попадает в Vercel Runtime Logs даже когда pino сериализует объекты в {}
+    console.error(
+      '[bot] Error handling MAX update',
+      botErrorMessage,
+      botErrorStack ?? '',
+      { update_id: update.update_id, chatId, userId, hasCallback: !!callbackData, callbackIdLen: callbackIdStr.length }
+    );
+    logger.error(
+      {
+        botErrorMessage,
+        botErrorStack,
+        chatId,
+        userId,
+        update_id: update.update_id,
+        hasCallbackData: Boolean(callbackData),
+        callbackIdLen: callbackIdStr.length,
+      },
+      'Error handling MAX update'
+    );
+    try {
+      await sendError(userId, 'Внутренняя ошибка сервера');
+    } catch (sendErr) {
+      const sendMsg = sendErr instanceof Error ? sendErr.message : String(sendErr);
+      console.error('[bot] sendError failed after handler error', sendMsg);
+      logger.error({ sendErrorMessage: sendMsg, userId }, 'sendError after handler failure also failed');
+    }
   }
 }

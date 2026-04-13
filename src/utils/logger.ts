@@ -5,6 +5,9 @@ import pino from 'pino';
 
 const logger = pino({
   level: process.env.LOG_LEVEL || 'info',
+  serializers: {
+    err: pino.stdSerializers.err,
+  },
   // В Vercel используем transport только локально
   ...(process.env.NODE_ENV === 'development' && {
     transport: {

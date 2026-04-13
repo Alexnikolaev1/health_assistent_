@@ -27,7 +27,8 @@ export interface MAXMessage {
 }
 
 export interface MAXCallbackQuery {
-  id: string;
+  /** Строка или число с платформы — в extract приводим к string */
+  id: string | number;
   from: MAXUser;
   message?: MAXMessage;
   data?: string;
@@ -180,10 +181,10 @@ export interface YandexGPTResponse {
 export interface CronPayload {
   reminder_id?: number;
   habit_id?: number;
+  /** id пользователя в БД (users.id); по нему берём max_user_id для MAX API */
   user_id: number;
   type: 'reminder' | 'habit';
   text: string;
-  chat_id: number;
 }
 
 // ==========================================

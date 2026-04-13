@@ -61,4 +61,26 @@ describe('normalizeIncomingUpdate', () => {
     expect(u?.message?.text).toBe('hi');
     expect(u?.message?.chat.id).toBe(5);
   });
+
+  it('maps message_callback to callback_query with callback_id and payload', () => {
+    const u = normalizeIncomingUpdate({
+      update_type: 'message_callback',
+      timestamp: 1700000000999,
+      callback: {
+        callback_id: 'cb-abc-123',
+        payload: 'cmd:metrics',
+        user: { user_id: 7, name: 'U' },
+      },
+      message: {
+        sender: { user_id: 7, name: 'U' },
+        recipient: { chat_id: 100 },
+        id: 555,
+        body: {},
+      },
+    });
+    expect(u?.callback_query?.id).toBe('cb-abc-123');
+    expect(u?.callback_query?.data).toBe('cmd:metrics');
+    expect(u?.callback_query?.from.id).toBe(7);
+    expect(u?.callback_query?.message?.chat.id).toBe(100);
+  });
 });

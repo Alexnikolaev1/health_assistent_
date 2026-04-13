@@ -7,6 +7,7 @@ import { Receiver } from '@upstash/qstash';
 import {
   ensureDatabaseSchema,
   getDueReminders,
+  getUserById,
   markReminderSent,
   getDueDailyHabits,
   markDailyPromptSent,
@@ -49,7 +50,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
       return NextResponse.json({ ok: true });
     } catch (error) {
-      logger.error({ error }, 'QStash verification failed');
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error({ errorMessage }, 'QStash verification failed');
       return NextResponse.json({ error: 'Verification failed' }, { status: 401 });
     }
   }
@@ -60,7 +62,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     await processQStashPayload(payload);
     return NextResponse.json({ ok: true });
   } catch (error) {
-    logger.error({ error }, 'Failed to process cron POST');
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.error({ errorMessage }, 'Failed to process cron POST');
     return NextResponse.json({ error: 'Internal error' }, { status: 500 });
   }
 }
@@ -106,7 +109,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
           await markReminderSent(reminder.id);
           logger.info({ reminder_id: reminder.id, user_id: reminder.max_user_id }, 'Reminder sent');
         } catch (error) {
-          logger.error({ error, reminder_id: reminder.id }, 'Failed to send reminder');
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          logger.error({ errorMessage, reminder_id: reminder.id }, 'Failed to send reminder');
           throw error;
         }
       })
@@ -126,7 +130,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
-    logger.error({ error }, 'Cron job failed');
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.error({ errorMessage }, 'Cron job failed');
     return NextResponse.json({ error: 'Internal error' }, { status: 500 });
   }
 }
@@ -138,9 +143,17 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 async function processQStashPayload(payload: CronPayload): Promise<void> {
   logger.info({ payload }, 'Processing QStash payload');
 
+  await ensureDatabaseSchema();
+  const dbUser = await getUserById(payload.user_id);
+  if (!dbUser) {
+    logger.warn({ user_id: payload.user_id }, 'QStash: user not in DB');
+    return;
+  }
+  const maxUserId = dbUser.max_user_id;
+
   if (payload.type === 'reminder') {
     await sendMessageWithKeyboard(
-      payload.chat_id,
+      maxUserId,
       `⏰ *Напоминание:* ${payload.text}`,
       buildKeyboard([[
         { text: '✅ Принято', callback_data: payload.reminder_id ? `reminder:ack:${payload.reminder_id}` : 'reminder:ack' },
@@ -153,7 +166,7 @@ async function processQStashPayload(payload: CronPayload): Promise<void> {
     }
   } else if (payload.type === 'habit') {
     await sendMessageWithKeyboard(
-      payload.chat_id,
+      maxUserId,
       `💪 *Время для привычки:* ${payload.text}`,
       buildKeyboard([[
         { text: '✅ Выполнил', callback_data: payload.habit_id ? `habit:complete:${payload.habit_id}` : 'habit:complete' },
@@ -185,7 +198,8 @@ async function processHabitCronNotifications(): Promise<{ dailySent: number; int
       await markDailyPromptSent(h.id);
       dailySent++;
     } catch (error) {
-      logger.error({ error, habit_id: h.id }, 'Failed to send daily habit prompt');
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error({ errorMessage, habit_id: h.id }, 'Failed to send daily habit prompt');
     }
   }
 
@@ -204,7 +218,8 @@ async function processHabitCronNotifications(): Promise<{ dailySent: number; int
       await markIntervalNudgeSent(h.id);
       intervalSent++;
     } catch (error) {
-      logger.error({ error, habit_id: h.id }, 'Failed to send interval habit prompt');
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error({ errorMessage, habit_id: h.id }, 'Failed to send interval habit prompt');
     }
   }
 

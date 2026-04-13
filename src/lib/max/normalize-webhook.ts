@@ -134,7 +134,23 @@ export function normalizeIncomingUpdate(body: unknown): MAXUpdate | null {
 
   if (updateType === 'message_callback' && u.callback && typeof u.callback === 'object') {
     const cb = u.callback as UnknownRec;
-    const callbackId = str(cb.callback_id ?? cb.id ?? '');
+    const root = u as UnknownRec;
+    const callbackId = str(
+      cb.callback_id ??
+        cb.callbackId ??
+        cb.query_id ??
+        cb.queryId ??
+        cb.id ??
+        root.callback_id ??
+        root.callbackId ??
+        ''
+    );
+    if (!callbackId) {
+      logger.warn(
+        { cb_keys: Object.keys(cb), payload: str(cb.payload ?? cb.data) },
+        'message_callback: callback_id missing in payload'
+      );
+    }
     const payload = str(cb.payload ?? cb.data ?? '');
     const user = (cb.user as UnknownRec) || (cb.sender as UnknownRec) || {};
     const userId = num(user.user_id ?? user.userId ?? user.id, 0);
