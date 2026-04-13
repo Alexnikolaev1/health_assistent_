@@ -34,16 +34,22 @@ export async function scheduleReminder(
     return null;
   }
 
+  const baseUrl = appUrl.trim().replace(/\/+$/, '');
+  const cronUrl = `${baseUrl}/api/cron`;
+
   try {
     const client = getQStashClient();
     const result = await client.publishJSON({
-      url: `${appUrl}/api/cron`,
+      url: cronUrl,
       body: payload,
       delay: Math.max(30, delaySeconds),
       retries: 3,
     });
 
-    logger.info({ messageId: result.messageId, delay: delaySeconds }, 'Reminder scheduled in QStash');
+    logger.info(
+      { messageId: result.messageId, delay: delaySeconds, cronUrl },
+      'Reminder scheduled in QStash'
+    );
     return result.messageId;
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);

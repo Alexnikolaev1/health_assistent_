@@ -35,27 +35,56 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const nextSigningKey = process.env.QSTASH_NEXT_SIGNING_KEY;
 
   if (signingKey && nextSigningKey) {
+    const receiver = new Receiver({ currentSigningKey: signingKey, nextSigningKey });
+    let rawBody: string;
     try {
-      const receiver = new Receiver({ currentSigningKey: signingKey, nextSigningKey });
-      const body = await req.text();
-      const signature = req.headers.get('upstash-signature') ?? '';
+      rawBody = await req.text();
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error({ errorMessage }, 'QStash: failed to read body');
+      return NextResponse.json({ error: 'Bad request' }, { status: 400 });
+    }
 
-      const isValid = await receiver.verify({ signature, body });
+    const signature = req.headers.get('upstash-signature') ?? '';
+    const upstashRegion = req.headers.get('upstash-region');
+
+    try {
+      const isValid = await receiver.verify({
+        signature,
+        body: rawBody,
+        clockTolerance: 120,
+        upstashRegion: upstashRegion ?? undefined,
+      });
       if (!isValid) {
         logger.warn('Invalid QStash signature');
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
       }
-
-      // Обрабатываем payload от QStash
-      const payload = JSON.parse(body) as CronPayload;
-      await processQStashPayload(payload);
-
-      return NextResponse.json({ ok: true });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      logger.error({ errorMessage }, 'QStash verification failed');
+      logger.error({ errorMessage }, 'QStash signature verify threw');
       return NextResponse.json({ error: 'Verification failed' }, { status: 401 });
     }
+
+    let payload: CronPayload;
+    try {
+      payload = JSON.parse(rawBody) as CronPayload;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error({ errorMessage }, 'QStash: invalid JSON body');
+      return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
+    }
+
+    try {
+      await processQStashPayload(payload);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorStack = error instanceof Error ? error.stack : undefined;
+      console.error('[cron] processQStashPayload failed', errorMessage, errorStack);
+      logger.error({ errorMessage, errorStack, payload }, 'QStash handler failed');
+      return NextResponse.json({ error: 'Handler failed' }, { status: 500 });
+    }
+
+    return NextResponse.json({ ok: true });
   }
 
   // Если QStash не настроен — обрабатываем напрямую
@@ -141,6 +170,11 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 // ==========================================
 
 async function processQStashPayload(payload: CronPayload): Promise<void> {
+  console.info('[cron] QStash payload', payload.type, {
+    user_id: payload.user_id,
+    reminder_id: payload.reminder_id,
+    habit_id: payload.habit_id,
+  });
   logger.info({ payload }, 'Processing QStash payload');
 
   await ensureDatabaseSchema();
