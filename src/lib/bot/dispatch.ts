@@ -39,7 +39,12 @@ import { formatHabitsList, formatHabitStats } from '@/lib/habits/engine';
 import { scheduleDailyReminder, rescheduleAllActiveRemindersForUser } from '@/lib/reminders/scheduler';
 import { DateTime } from 'luxon';
 import { parseTimezoneInput } from '@/utils/timezone';
-import { buildWelcomeBody, HELP_TEXT } from '@/lib/bot/copy';
+import {
+  buildWelcomeBody,
+  HELP_TEXT,
+  TIMEZONE_COMMAND_HEADER,
+  REMINDER_TIMEZONE_FOOTNOTE,
+} from '@/lib/bot/copy';
 import { SICK_LEAVE_INFO_TEXT } from '@/lib/physician-reminder';
 import logger from '@/utils/logger';
 
@@ -66,17 +71,19 @@ export async function handleTimezoneCommand(
     const valid = localNow.isValid;
     await sendMessage(
       maxUserId,
-      `🕐 Ваш часовой пояс: ${currentTz}\n` +
-        (valid ? `Сейчас по вашим часам: ${localNow.toFormat('dd.MM.yyyy HH:mm')}\n\n` : '\n') +
-        `Чтобы напоминания приходили как на телефоне, укажите регион (IANA), например:\n` +
+      TIMEZONE_COMMAND_HEADER +
+        `📍 *Сейчас в боте сохранён пояс:* ${currentTz}\n` +
+        (valid ? `🕐 По этому поясу сейчас: _${localNow.toFormat('dd.MM.yyyy HH:mm')}_\n\n` : '\n') +
+        `*Что ввести*\n` +
+        `Регион (как в списке часовых зон на телефоне), примеры:\n` +
         `• /timezone Europe/Kaliningrad\n` +
         `• /timezone Asia/Yekaterinburg\n` +
         `• /timezone Europe/Samara\n\n` +
-        `Или только смещение от UTC, как в настройках «Дата и время»:\n` +
+        `Или смещение от UTC из настроек «Дата и время»:\n` +
         `• /timezone +3\n` +
         `• /timezone -5\n\n` +
         `Список зон: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones`,
-      { reply_markup: MAIN_MENU_KEYBOARD }
+      { reply_markup: MAIN_MENU_KEYBOARD, parse_mode: 'Markdown' }
     );
     return;
   }
@@ -181,9 +188,11 @@ export async function handleReminderCommand(
       const hint = qstashId
         ? ''
         : '\n\n_Для отправки в точное время нужны APP_URL и QSTASH_TOKEN на сервере._';
-      await sendMessage(maxUserId, `✅ Напоминание добавлено: *${parsed.text}* в *${parsed.time}*${hint}`, {
-        parse_mode: 'Markdown',
-      });
+      await sendMessage(
+        maxUserId,
+        `✅ Напоминание добавлено: *${parsed.text}* в *${parsed.time}*${hint}${REMINDER_TIMEZONE_FOOTNOTE}`,
+        { parse_mode: 'Markdown' }
+      );
       return;
     }
   }
@@ -193,7 +202,9 @@ export async function handleReminderCommand(
     if (reminders.length === 0) {
       await sendMessageWithKeyboard(
         maxUserId,
-        `⏰ У вас нет активных напоминаний.\n\nДобавьте первое:`,
+          `⏰ У вас нет активных напоминаний.\n\n` +
+            `Добавьте первое. Время в напоминании — *ваше локальное* после настройки /timezone; ` +
+            `если пояс не задан, используется московское время (МСК).`,
         {
           inline_keyboard: [[{ text: '➕ Добавить напоминание', callback_data: 'action:reminder_start' }]],
         }
@@ -201,7 +212,8 @@ export async function handleReminderCommand(
       return;
     }
 
-    let message = `⏰ *Ваши напоминания:*\n\n`;
+    let message =
+      `⏰ *Ваши напоминания* (время — по вашему /timezone; иначе по МСК):\n\n`;
     const keyboard: Array<Array<{ text: string; callback_data: string }>> = [];
 
     reminders.forEach((r, i) => {

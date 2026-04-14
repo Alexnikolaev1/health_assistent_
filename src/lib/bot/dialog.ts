@@ -22,6 +22,7 @@ import {
 } from '@/utils/parsers';
 import { sendPhysicianReminderToChat } from '@/lib/physician-reminder';
 import { handleSymptomAnalysis, dispatchPlainMessage } from './dispatch';
+import { REMINDER_TIMEZONE_FOOTNOTE } from '@/lib/bot/copy';
 import type { MetricType } from '@/types';
 
 export async function handleDialogContext(
@@ -73,7 +74,7 @@ export async function handleDialogContext(
       await setConversationContext(dbUserId, 'dialog', { state: 'waiting_reminder_time', name: text.trim() }, 10);
       await sendMessage(
         maxUserId,
-        `⏰ В какое время напомнить? Введите время в формате *ЧЧ:ММ* (например, 20:00):`,
+        `⏰ В какое время напомнить? Введите *ЧЧ:ММ* (например, 20:00) — это *ваши* локальные часы после настройки /timezone; если пояс не задан, используется московское время (МСК).`,
         { parse_mode: 'Markdown' }
       );
       return;
@@ -104,7 +105,7 @@ export async function handleDialogContext(
 
       await sendMessage(
         maxUserId,
-        `✅ Напоминание добавлено!\n\n💊 *${reminderName}*\n⏰ Каждый день в *${time}* (ваш часовой пояс)${qstashHint}`,
+        `✅ Напоминание добавлено!\n\n💊 *${reminderName}*\n⏰ Каждый день в *${time}* (по вашему часовому поясу из /timezone)${qstashHint}${REMINDER_TIMEZONE_FOOTNOTE}`,
         { parse_mode: 'Markdown' }
       );
       return;
