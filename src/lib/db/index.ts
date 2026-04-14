@@ -62,6 +62,17 @@ export async function getUserById(id: number): Promise<DBUser | null> {
   }, 'getUserById');
 }
 
+export async function updateUserTimezone(userId: number, timezone: string): Promise<DBUser> {
+  return query(async () => {
+    const result = await sql<DBUser>`
+      UPDATE users SET timezone = ${timezone} WHERE id = ${userId} RETURNING *
+    `;
+    const row = result.rows[0];
+    if (!row) throw new Error('updateUserTimezone: user not found');
+    return row;
+  }, 'updateUserTimezone');
+}
+
 // ==========================================
 // Метрики здоровья
 // ==========================================

@@ -4,7 +4,7 @@
 import { DateTime } from 'luxon';
 import { Client as QStashClient } from '@upstash/qstash';
 import type { CronPayload } from '@/types';
-import { getUserById } from '@/lib/db';
+import { getUserById, getUserReminders } from '@/lib/db';
 import logger from '@/utils/logger';
 
 let qstashClient: QStashClient | null = null;
@@ -140,4 +140,13 @@ export async function scheduleHabitReminder(
   };
 
   return scheduleReminder(payload, delaySeconds);
+}
+
+/** После смены часового пояса — новые задержки QStash по локальному времени. */
+export async function rescheduleAllActiveRemindersForUser(dbUserId: number): Promise<void> {
+  const reminders = await getUserReminders(dbUserId, true);
+  for (const r of reminders) {
+    if (!r.active) continue;
+    await scheduleDailyReminder(r.id, dbUserId, 0, r.text, r.reminder_time);
+  }
 }

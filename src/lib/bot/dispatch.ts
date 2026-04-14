@@ -22,6 +22,8 @@ import {
   getHabitStats,
   setConversationContext,
   saveSymptomHistory,
+  getUserById,
+  updateUserTimezone,
 } from '@/lib/db';
 import { analyzeSymptoms, formatSymptomAnalysisMessage } from '@/lib/ai/yandexGPT';
 import {
@@ -34,7 +36,9 @@ import {
   formatDate,
 } from '@/utils/parsers';
 import { formatHabitsList, formatHabitStats } from '@/lib/habits/engine';
-import { scheduleDailyReminder } from '@/lib/reminders/scheduler';
+import { scheduleDailyReminder, rescheduleAllActiveRemindersForUser } from '@/lib/reminders/scheduler';
+import { DateTime } from 'luxon';
+import { parseTimezoneInput } from '@/utils/timezone';
 import { buildWelcomeBody, HELP_TEXT } from '@/lib/bot/copy';
 import { SICK_LEAVE_INFO_TEXT } from '@/lib/physician-reminder';
 import logger from '@/utils/logger';
@@ -46,6 +50,54 @@ export async function handleStart(maxUserId: number, firstName?: string): Promis
 
 export async function handleHelp(maxUserId: number): Promise<void> {
   await sendMessageWithKeyboard(maxUserId, HELP_TEXT, MAIN_MENU_KEYBOARD);
+}
+
+export async function handleTimezoneCommand(
+  maxUserId: number,
+  dbUserId: number,
+  text: string
+): Promise<void> {
+  const arg = text.replace(/^\/(timezone|tz)\s*/i, '').trim();
+  const user = await getUserById(dbUserId);
+  const currentTz = user?.timezone?.trim() || 'Europe/Moscow';
+
+  if (!arg) {
+    const localNow = DateTime.now().setZone(currentTz);
+    const valid = localNow.isValid;
+    await sendMessage(
+      maxUserId,
+      `🕐 Ваш часовой пояс: ${currentTz}\n` +
+        (valid ? `Сейчас по вашим часам: ${localNow.toFormat('dd.MM.yyyy HH:mm')}\n\n` : '\n') +
+        `Чтобы напоминания приходили как на телефоне, укажите регион (IANA), например:\n` +
+        `• /timezone Europe/Kaliningrad\n` +
+        `• /timezone Asia/Yekaterinburg\n` +
+        `• /timezone Europe/Samara\n\n` +
+        `Или только смещение от UTC, как в настройках «Дата и время»:\n` +
+        `• /timezone +3\n` +
+        `• /timezone -5\n\n` +
+        `Список зон: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones`,
+      { reply_markup: MAIN_MENU_KEYBOARD }
+    );
+    return;
+  }
+
+  const parsed = parseTimezoneInput(arg);
+  if (!parsed.ok) {
+    await sendMessage(maxUserId, `⚠️ ${parsed.message}`, { reply_markup: MAIN_MENU_KEYBOARD });
+    return;
+  }
+
+  await updateUserTimezone(dbUserId, parsed.iana);
+  await rescheduleAllActiveRemindersForUser(dbUserId);
+
+  const now = DateTime.now().setZone(parsed.iana);
+  await sendMessage(
+    maxUserId,
+    `✅ Часовой пояс: *${parsed.iana}*\n` +
+      `Сейчас у вас: *${now.toFormat('dd.MM.yyyy HH:mm')}*\n` +
+      `Активные напоминания перепланированы под это время.`,
+    { parse_mode: 'Markdown', reply_markup: MAIN_MENU_KEYBOARD }
+  );
 }
 
 export async function handleSymptomCommand(maxUserId: number, dbUserId: number, text: string): Promise<void> {
@@ -279,6 +331,10 @@ export async function dispatchPlainMessage(
   }
   if (text.startsWith('/help')) {
     await handleHelp(maxUserId);
+    return;
+  }
+  if (text.startsWith('/timezone') || text.startsWith('/tz')) {
+    await handleTimezoneCommand(maxUserId, dbUserId, text);
     return;
   }
   if (text.startsWith('/symptom')) {

@@ -257,6 +257,7 @@ export const MAIN_MENU_KEYBOARD: InlineKeyboardMarkup = {
       { text: '📋 Больничный', callback_data: 'cmd:sickleave' },
     ],
     [
+      { text: '🕐 Часовой пояс', callback_data: 'cmd:timezone' },
       { text: '❓ Помощь', callback_data: 'cmd:help' },
     ],
   ],

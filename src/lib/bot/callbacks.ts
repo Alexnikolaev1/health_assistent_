@@ -25,6 +25,7 @@ import { formatHabitStats, CHALLENGES } from '@/lib/habits/engine';
 import {
   handleStart,
   handleHelp,
+  handleTimezoneCommand,
   handleMetricsCommand,
   handleReminderCommand,
   handleHabitsCommand,
@@ -65,6 +66,9 @@ export async function handleInlineCallback(
         return;
       case 'help':
         await handleHelp(maxUserId);
+        return;
+      case 'timezone':
+        await handleTimezoneCommand(maxUserId, dbUserId, '/timezone');
         return;
     }
   }
