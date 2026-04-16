@@ -16,7 +16,7 @@ import {
 } from '@/lib/db';
 import { scheduleDailyReminder } from '@/lib/reminders/scheduler';
 import {
-  parseMetricFromText,
+  parseMetricValueForContext,
   getMetricDisplayName,
   formatMetricValue,
 } from '@/utils/parsers';
@@ -51,20 +51,21 @@ export async function handleDialogContext(
 
     case 'waiting_metric_value': {
       const metricType = context.metric_type as MetricType;
-      const metric = parseMetricFromText(`${metricType} ${text}`) ?? parseMetricFromText(text);
+      const metric = parseMetricValueForContext(metricType, text);
       if (!metric) {
         await sendMessage(
           maxUserId,
-          `⚠️ Не удалось распознать значение. Введите, например: *120/80* или *75*`,
+          `⚠️ Не удалось распознать значение для этой метрики. Введите коротко, например:\n` +
+            `давление — *120/80* или *120 80* · пульс — *72* · сахар — *5.6* · вес — *75.2* · температура — *36.6*`,
           { parse_mode: 'Markdown' }
         );
         return;
       }
-      await saveMetric(dbUserId, metricType, text.trim());
+      await saveMetric(dbUserId, metricType, metric.value);
       await clearConversationContext(dbUserId, 'dialog');
       await sendMessage(
         maxUserId,
-        `✅ ${getMetricDisplayName(metricType)}: *${formatMetricValue(metricType, text.trim())}* сохранено!`,
+        `✅ ${getMetricDisplayName(metricType)}: *${metric.normalized}* сохранено!`,
         { parse_mode: 'Markdown' }
       );
       return;

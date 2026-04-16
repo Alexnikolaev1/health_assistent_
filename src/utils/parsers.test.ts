@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   parseMetricFromText,
+  parseMetricValueForContext,
   parseReminderCommand,
   parseHabitCommand,
   isSymptomText,
@@ -21,6 +22,23 @@ describe('parseMetricFromText', () => {
 
   it('returns null for garbage', () => {
     expect(parseMetricFromText('привет как дела')).toBeNull();
+  });
+});
+
+describe('parseMetricValueForContext', () => {
+  it('accepts bare blood pressure 120/80', () => {
+    const m = parseMetricValueForContext('blood_pressure', '120/80');
+    expect(m?.type).toBe('blood_pressure');
+    expect(m?.value).toBe('120/80');
+  });
+  it('accepts bare pulse 72', () => {
+    const m = parseMetricValueForContext('pulse', '72');
+    expect(m?.type).toBe('pulse');
+    expect(m?.value).toBe('72');
+  });
+  it('accepts blood pressure with space', () => {
+    const m = parseMetricValueForContext('blood_pressure', '120 80');
+    expect(m?.value).toBe('120/80');
   });
 });
 

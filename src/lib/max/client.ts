@@ -35,7 +35,7 @@ async function platformRequest<T = unknown>(
     }
   }
 
-  /** Любой переданный объект (включая пустой `{}`) сериализуется в JSON. MAX API для POST /answers требует непустое тело — минимум `{}`. */
+  /** Тело JSON для POST /answers: нужен объект с полем `message` или `notification` (см. dev.max.ru POST /answers). */
   const hasJsonBody =
     opts.body != null && typeof opts.body === 'object' && !Array.isArray(opts.body);
 
@@ -144,15 +144,18 @@ export async function sendMessageWithKeyboard(
 // Ответ на callback — POST /answers
 // ==========================================
 
+/** Без текста — «тихий» ответ (невидимый символ), иначе MAX вернёт 400: message или notification required */
+const CALLBACK_NOTIFICATION_PLACEHOLDER = '\u200b';
+
 export async function answerCallbackQuery(
   callbackQueryId: string,
   text?: string,
   _showAlert: boolean = false
 ): Promise<void> {
-  const body: Record<string, unknown> = {};
-  if (text) {
-    body.notification = text;
-  }
+  const trimmed = text?.trim();
+  const body: Record<string, unknown> = {
+    notification: trimmed && trimmed.length > 0 ? trimmed : CALLBACK_NOTIFICATION_PLACEHOLDER,
+  };
   await platformRequest('answers', {
     method: 'POST',
     query: { callback_id: callbackQueryId },

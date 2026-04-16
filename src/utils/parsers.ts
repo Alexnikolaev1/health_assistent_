@@ -105,6 +105,84 @@ export function parseMetricFromText(text: string): ParsedMetric | null {
   return null;
 }
 
+/**
+ * Значение метрики, когда тип уже выбран кнопкой (ожидается короткий ввод: 120/80, 72, 36.6).
+ * Свободный текст «давление 120/80» по-прежнему обрабатывается через parseMetricFromText.
+ */
+export function parseMetricValueForContext(metricType: MetricType, text: string): ParsedMetric | null {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+
+  const free = parseMetricFromText(trimmed);
+  if (free && free.type === metricType) {
+    return free;
+  }
+
+  const mk = (value: string): ParsedMetric => ({
+    type: metricType,
+    value,
+    normalized: formatMetricValue(metricType, value),
+  });
+
+  switch (metricType) {
+    case 'blood_pressure': {
+      const m = trimmed.match(/^(\d{2,3})\s*[/\\\-]\s*(\d{2,3})$/);
+      if (m) return mk(`${m[1]}/${m[2]}`);
+      const m2 = trimmed.match(/^(\d{2,3})\s+(\d{2,3})$/);
+      if (m2) return mk(`${m2[1]}/${m2[2]}`);
+      return null;
+    }
+    case 'pulse': {
+      const m = trimmed.match(/^(\d{2,3})$/);
+      if (!m) return null;
+      const n = parseInt(m[1], 10);
+      if (n < 30 || n > 250) return null;
+      return mk(m[1]);
+    }
+    case 'blood_sugar': {
+      const m = trimmed.match(/^(\d+[.,]\d+|\d+)$/);
+      if (!m) return null;
+      const value = m[1].replace(',', '.');
+      const num = parseFloat(value);
+      if (!Number.isFinite(num) || num < 1 || num > 50) return null;
+      return mk(value);
+    }
+    case 'weight': {
+      const m = trimmed.match(/^(\d{1,3}(?:[.,]\d{1,2})?)$/);
+      if (!m) return null;
+      const value = m[1].replace(',', '.');
+      const num = parseFloat(value);
+      if (!Number.isFinite(num) || num < 20 || num > 400) return null;
+      return mk(value);
+    }
+    case 'temperature': {
+      const m = trimmed.match(/^(\d{1,2}[.,]\d{1})$/);
+      if (!m) return null;
+      const value = m[1].replace(',', '.');
+      const num = parseFloat(value);
+      if (!Number.isFinite(num) || num < 30 || num > 45) return null;
+      return mk(value);
+    }
+    case 'sleep_quality': {
+      const m = trimmed.match(/^(\d+(?:[.,]\d+)?)$/);
+      if (!m) return null;
+      const value = m[1].replace(',', '.');
+      const num = parseFloat(value);
+      if (!Number.isFinite(num) || num < 0 || num > 24) return null;
+      return mk(value);
+    }
+    case 'mood': {
+      const m = trimmed.match(/^(\d{1,2})(?:\s*\/\s*10)?$/i);
+      if (!m) return null;
+      const n = parseInt(m[1], 10);
+      if (n < 1 || n > 10) return null;
+      return mk(String(n));
+    }
+    default:
+      return null;
+  }
+}
+
 export function formatMetricValue(type: MetricType, value: string): string {
   const units: Record<MetricType, string> = {
     blood_pressure: 'мм рт.ст.',
